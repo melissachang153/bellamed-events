@@ -198,3 +198,8 @@ table.grid th { color: var(--muted); font-weight: 600; background: #fafbfa; posi
 .save-opts .btn { flex-direction: column; gap: 2px; padding: 10px 8px; min-height: 64px; }
 .save-opts .btn span { font-size: 12px; opacity: .8; font-weight: normal; }
 @media (max-width: 480px) { .save-opts { grid-template-columns: 1fr; } }
+
+/* 日期範圍 */
+.date-range { display: grid; grid-template-columns: 1fr 1fr auto; gap: 8px; align-items: end; }
+.date-range > div { display: flex; flex-direction: column; gap: 2px; }
+@media (max-width: 480px) { .date-range { grid-template-columns: 1fr 1fr; } .date-range .btn { grid-column: 1 / -1; } }

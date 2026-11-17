@@ -154,8 +154,9 @@ var BM = (function () {
   }
 
   // ---- 版本與問題回報 ----
-  var VERSION = '1.6.0';
+  var VERSION = '1.7.0';
   var UPDATED = '2026/11/17';
+  var HIST_NOTE = '2026/10/03 以前的紀錄由舊紀錄表匯入。原紀錄沒有區分上、下午場，半天的場次統一記為「上午場」，不影響次數統計。';
 
   function footer(pageName, whoFn) {
     var f = document.createElement('footer');
@@ -183,7 +184,7 @@ var BM = (function () {
   }
 
   return {
-    VERSION: VERSION, UPDATED: UPDATED, footer: footer, cache: cache, cached: cached, clearCache: clearCache, swr: swr,
+    VERSION: VERSION, UPDATED: UPDATED, HIST_NOTE: HIST_NOTE, footer: footer, cache: cache, cached: cached, clearCache: clearCache, swr: swr,
     store: store, api: api, fmtDate: fmtDate, fmtRange: fmtRange, today: today, esc: esc, sess: sess,
     img: img, fileUrl: fileUrl, linkify: linkify, toast: toast, busy: busy, run: run, modal: modal,
     meetTimesHtml: meetTimesHtml, onAuthFail: null, onPwChange: null

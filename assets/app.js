@@ -266,8 +266,8 @@
   }
 
   function renderRecords(rec) {
-    return '<div class="section-title">' + rec.year + ' 年每人參加場次（活動結束後隔日更新）</div>' + rec.people.map(function (p) {
-      return '<div class="card rec-person"><div class="rec-head"><b>' + esc(p.name) + ' <span class="small muted">' + esc(p.region) + '區</span></b>' +
+    return '<div class="section-title">' + rec.year + ' 年每人參加場次（活動結束後隔日更新）</div>' + (rec.year <= '2026' ? '<div class="notice ok">' + BM.HIST_NOTE + '</div>' : '') + rec.people.map(function (p) {
+      return '<div class="card rec-person"><div class="rec-head"><b>' + esc(p.name) + (p.region ? ' <span class="small muted">' + esc(p.region) + '區</span>' : '') + '</b>' +
         '<span class="rec-total">' + p.total + ' 次</span></div>' +
         (p.items.length ? '<ul class="rec-items">' + p.items.map(function (i) {
           return '<li><span>' + i.date.slice(5).replace('-', '/') + '</span><span>' + esc(i.name) + '</span><span class="c">' +

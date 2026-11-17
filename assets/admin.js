@@ -136,7 +136,10 @@
       '<p class="small muted" style="margin:0">所有欄位都可以之後再補，填到一半可以先存成草稿。</p>' +
       '<label class="f">活動名稱 *</label><input class="input" id="eName" value="' + esc(e.name) + '">' +
       '<label class="f">日期（可多天）</label><div id="dateList"></div>' +
-      '<div style="display:flex;gap:8px"><input class="input" type="date" id="dateAdd"><button class="btn ghost" id="dateAddBtn" style="flex:none">加入</button></div>' +
+      '<div class="date-range"><div><span class="small muted">開始</span><input class="input" type="date" id="dateFrom"></div>' +
+      '<div><span class="small muted">結束（單日可不填）</span><input class="input" type="date" id="dateTo"></div>' +
+      '<button class="btn ghost" id="dateAddBtn">加入</button></div>' +
+      '<p class="small muted" style="margin:4px 0 0">可以直接輸入日期或點日曆選取。加入後，不需要的日子可以按 ✕ 移除。</p>' +
       '<label class="f">地點</label><input class="input" id="eLoc" value="' + esc(e.location) + '">' +
       '<label class="f">主辦</label><input class="input" id="eHost" value="' + esc(e.host) + '" placeholder="例如：高醫">' +
       '<div class="row2"><div><label class="f">建議名額</label><input class="input" id="eSug" type="number" min="0" inputmode="numeric" value="' + esc(e.suggested) + '"></div>' +
@@ -228,11 +231,25 @@
       refreshFromD();
     }
 
+    // 加入單日或一段日期（開始～結束，每一天都加入）
+    $('#dateFrom', root).onchange = function () {
+      if (!$('#dateTo', root).value || $('#dateTo', root).value < this.value) $('#dateTo', root).min = this.value;
+    };
     $('#dateAddBtn', root).onclick = function () {
-      var v = $('#dateAdd', root).value;
-      if (!v) return BM.toast('請先選擇日期', true);
-      if (dates.indexOf(v) < 0) dates.push(v);
-      $('#dateAdd', root).value = '';
+      var a = $('#dateFrom', root).value, b = $('#dateTo', root).value || a;
+      if (!a) return BM.toast('請先選擇開始日期', true);
+      if (b < a) { var t = a; a = b; b = t; }
+      var p = a.split('-'), cur = new Date(+p[0], +p[1] - 1, +p[2]), n = 0;
+      while (n < 31) {
+        var d = cur.getFullYear() + '-' + String(cur.getMonth() + 1).padStart(2, '0') + '-' + String(cur.getDate()).padStart(2, '0');
+        if (d > b) break;
+        if (dates.indexOf(d) < 0) dates.push(d);
+        cur.setDate(cur.getDate() + 1);
+        n++;
+      }
+      if (n >= 31) BM.toast('一次最多加入 31 天', true);
+      $('#dateFrom', root).value = '';
+      $('#dateTo', root).value = '';
       drawDates();
     };
     // 三種儲存方式：草稿 / 公開 / 公開並推播
@@ -391,7 +408,7 @@
     var year = S.year;
     await BM.swr('rec_' + year, function () { return BM.api('adminRecords', { token: token(), year: year }); }, function (rec) {
       if (S.year !== year || !$('#rl')) return;
-      $('#rl').innerHTML = '<p class="small muted">活動結束後隔日計入。' + (rec.updatedAt ? '上次更新：' + esc(rec.updatedAt) : '') + '</p>' +
+      $('#rl').innerHTML = '<p class="small muted">活動結束後隔日計入。' + (rec.updatedAt ? '上次更新：' + esc(rec.updatedAt) : '') + '</p>' + (rec.year <= '2026' ? '<div class="notice ok">' + BM.HIST_NOTE + '</div>' : '') +
         (rec.locked ? '<div class="notice">🔒 ' + rec.year + ' 年度已鎖定</div>' : '') +
         '<div class="scroll-x card" style="padding:0"><table class="grid"><thead><tr><th>員工</th><th>參加場次</th><th>次數</th></tr></thead><tbody>' +
         rec.people.map(function (p) {
@@ -409,8 +426,9 @@
       '<a class="btn ghost" href="' + esc(D.settings.staffSheetUrl) + '" target="_blank" rel="noopener">開啟人員主檔</a></div>' +
       '<div class="card scroll-x" style="padding:0;margin-top:12px"><table class="grid"><thead><tr><th>員編</th><th>姓名</th><th>地區</th><th>狀態</th><th></th></tr></thead><tbody>' +
       D.staff.map(function (s) {
-        return '<tr><td>' + esc(s.id) + '</td><td>' + esc(s.name + ' ' + s.enName) + '</td><td>' + esc(s.region) + '</td><td>' +
+        return '<tr><td>' + esc(s.id) + '</td><td>' + esc([s.name, s.enName].filter(Boolean).join(' ')) + '</td><td>' + esc(s.region || '—') + '</td><td>' +
           (s.admin ? '<span class="badge">管理員</span> ' : '') +
+          (/^A\d{3}$/.test(s.id) ? '<span class="badge gray">非正式</span> ' : '') +
           (s.active ? '<span class="badge">在職</span>' : '<span class="badge gray">停用</span>') +
           (s.active && s.mustChange ? ' <span class="badge warn">尚未設定密碼</span>' : '') +
           (s.locked ? ' <span class="badge bad">🔒 鎖定中</span>' : '') + '</td>' +
@@ -424,27 +442,42 @@
   function staffEditor(s) {
     var isNew = !s;
     s = s || { id: '', name: '', enName: '', region: '北', dept: '業務', birthday: '', active: true, note: '' };
-    var m = BM.modal('<h2>' + (isNew ? '新增員工' : '編輯員工') + '</h2>' +
+    var isTemp = /^A\d{3}$/.test(s.id);
+    var pwLabel = function (t) { return t ? '預設密碼（4 碼數字）' : '生日（MMDD，作為預設密碼）'; };
+    var m = BM.modal('<h2>' + (isNew ? '新增員工' : '編輯員工') + (isTemp ? ' <span class="badge gray">非正式</span>' : '') + '</h2>' +
+      (isNew ? '<label class="chk" style="margin-bottom:4px"><input type="checkbox" id="sTemp">非正式員工（員編自動編為 A 開頭三碼流水號）</label>' : '') +
       '<div class="row2"><div><label class="f">員編</label><input class="input" id="sId" value="' + esc(s.id) + '"' + (isNew ? '' : ' disabled') + '></div>' +
-      '<div><label class="f">地區</label><select class="input" id="sReg">' + REG.map(function (r) { return '<option' + (s.region === r ? ' selected' : '') + '>' + r + '</option>'; }).join('') + '</select></div></div>' +
-      '<div class="row2"><div><label class="f">中文名</label><input class="input" id="sName" value="' + esc(s.name) + '"></div>' +
+      '<div><label class="f">地區</label><select class="input" id="sReg">' + (s.region ? '' : '<option value="">請選擇…</option>') +
+        REG.map(function (r) { return '<option' + (s.region === r ? ' selected' : '') + '>' + r + '</option>'; }).join('') + '</select></div></div>' +
+      '<div class="row2"><div><label class="f">中文名' + (isTemp ? '（選填）' : '') + '</label><input class="input" id="sName" value="' + esc(s.name) + '"></div>' +
       '<div><label class="f">英文名（登入帳號）</label><input class="input" id="sEn" autocapitalize="off" value="' + esc(s.enName) + '"></div></div>' +
       '<div class="row2"><div><label class="f">部門</label><input class="input" id="sDept" value="' + esc(s.dept) + '"></div>' +
-      '<div><label class="f">生日（MMDD）</label><input class="input" id="sBday" inputmode="numeric" maxlength="4" value="' + esc(s.birthday) + '"></div></div>' +
+      '<div><label class="f" id="sBdayLbl">' + pwLabel(isTemp) + '</label><input class="input" id="sBday" inputmode="numeric" maxlength="4" value="' + esc(s.birthday) + '"></div></div>' +
       '<label class="f">備註</label><input class="input" id="sNote" value="' + esc(s.note) + '">' +
-      (isNew ? '<p class="small muted">預設密碼為生日 4 碼，第一次登入需重新設定。</p>' :
+      (isNew ? '<p class="small muted">第一次登入時，需要用預設密碼登入並重新設定。</p>' :
         s.admin ? '<p class="small muted">這是管理員帳號，不能停用，也不列入報名統計。</p>' :
         '<label class="chk' + (s.active ? ' on' : '') + '" style="margin-top:12px"><input type="checkbox" id="sActive"' + (s.active ? ' checked' : '') + '>在職（取消勾選＝停用，列表不再顯示）</label>') +
       '<div class="btn-row"><button class="btn" id="sSave">儲存</button></div>' +
       (isNew || s.admin ? '' : '<h3 style="margin-top:24px">密碼</h3>' +
-        '<p class="small muted" style="margin:0">「恢復為生日」後，員工下次登入需重新設定新密碼，也會同時解除鎖定。</p>' +
-        '<div class="btn-row"><button class="btn ghost" id="sReset">恢復為生日（並解鎖）</button>' +
+        '<p class="small muted" style="margin:0">「恢復預設密碼」後，員工下次登入需重新設定新密碼，也會同時解除鎖定。</p>' +
+        '<div class="btn-row"><button class="btn ghost" id="sReset">恢復預設密碼（並解鎖）</button>' +
         '<input class="input" id="sPw" placeholder="或直接指定新密碼（6–20 碼英數）" style="flex:1;min-width:160px"><button class="btn ghost" id="sSetPw">設定</button></div>'));
     var r = m.el;
+    var tempBox = $('#sTemp', r);
+    if (tempBox) tempBox.onchange = function () {
+      tempBox.parentElement.classList.toggle('on', tempBox.checked);
+      $('#sId', r).disabled = tempBox.checked;
+      $('#sId', r).value = '';
+      $('#sId', r).placeholder = tempBox.checked ? '儲存時自動編號' : '';
+      $('#sBdayLbl', r).textContent = pwLabel(tempBox.checked);
+      if (tempBox.checked) $('#sDept', r).value = '非正式';
+    };
     $('#sSave', r).onclick = async function () {
-      var st = { id: $('#sId', r).value.trim(), name: $('#sName', r).value.trim(), enName: $('#sEn', r).value.trim(), region: $('#sReg', r).value,
+      var temp = !!(tempBox && tempBox.checked);
+      var st = { id: temp ? '' : $('#sId', r).value.trim(), temp: temp, name: $('#sName', r).value.trim(), enName: $('#sEn', r).value.trim(), region: $('#sReg', r).value,
         dept: $('#sDept', r).value.trim(), birthday: $('#sBday', r).value.trim(), note: $('#sNote', r).value.trim(),
         active: isNew || s.admin ? true : $('#sActive', r).checked };
+      if (!st.region) return BM.toast('請選擇地區', true);
       D = await call('saveStaff', { staff: st });
       BM.toast('已儲存');
       m.close();
@@ -452,7 +485,7 @@
     };
     if (!isNew && !s.admin) {
       $('#sReset', r).onclick = async function () {
-        if (!confirm('把 ' + s.name + ' 的密碼恢復為生日 ' + s.birthday + '？\n對方下次登入需重新設定新密碼。')) return;
+        if (!confirm('把 ' + (s.name || s.enName) + ' 的密碼恢復為預設密碼 ' + s.birthday + '？\n對方下次登入需重新設定新密碼。')) return;
         await call('setStaffPassword', { id: s.id, reset: true });
         BM.toast('已恢復並解鎖，對方需重新登入');
         reload();
