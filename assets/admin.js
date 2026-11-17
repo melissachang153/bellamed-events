@@ -401,7 +401,7 @@
     var box = $('#tab-records');
     var y = Number(BM.today().slice(0, 4));
     var opts = '';
-    for (var i = y + 1; i >= y - 10; i--) opts += '<option' + (String(i) === S.year ? ' selected' : '') + '>' + i + '</option>';
+    for (var i = y + 1; i >= 2023; i--) opts += '<option' + (String(i) === S.year ? ' selected' : '') + '>' + i + '</option>';
     box.innerHTML = '<label class="f">年度</label><select class="input" id="ry">' + opts + '</select>' +
       '<p class="small muted">要手動修改某人的次數：到「活動」→ 該活動的「報名名單」勾選/取消。</p><div id="rl"></div>';
     $('#ry').onchange = function () { S.year = this.value; renderRecords(); };

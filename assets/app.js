@@ -252,7 +252,7 @@
     var box = $('#tab-records');
     var y = Number(BM.today().slice(0, 4));
     var opts = '';
-    for (var i = y + 1; i >= y - 5; i--) opts += '<option' + (String(i) === S.year ? ' selected' : '') + '>' + i + '</option>';
+    for (var i = y + 1; i >= 2023; i--) opts += '<option' + (String(i) === S.year ? ' selected' : '') + '>' + i + '</option>';
     box.innerHTML = '<div class="row2" style="align-items:end"><div><label class="f" for="yearSel">年度</label>' +
       '<select class="input" id="yearSel">' + opts + '</select></div><div id="lockInfo"></div></div><div id="recList"></div>';
     $('#yearSel').onchange = function () { S.year = this.value; loadRecords(); };
