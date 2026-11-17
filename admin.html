@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#1f6f50">
+  <meta name="robots" content="noindex, nofollow">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://drive.google.com https://*.googleusercontent.com; connect-src https://script.google.com https://script.googleusercontent.com; base-uri 'none'; form-action 'none'">
+  <meta name="referrer" content="strict-origin-when-cross-origin">
+  <title>醫學會活動報名・管理</title>
+  <link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <h1>醫學會活動報名・管理</h1>
+    <button id="siteBtn">報名頁</button>
+    <button id="logoutBtn" hidden>登出</button>
+  </header>
+
+  <section id="appView" hidden>
+    <nav class="tabs" id="tabs">
+      <button data-tab="events" class="on">活動</button>
+      <button data-tab="review">審核</button>
+      <button data-tab="records">參加紀錄</button>
+      <button data-tab="staff">員工</button>
+      <button data-tab="settings">設定</button>
+    </nav>
+    <main>
+      <div id="tab-events"></div>
+      <div id="tab-review" hidden></div>
+      <div id="tab-records" hidden></div>
+      <div id="tab-staff" hidden></div>
+      <div id="tab-settings" hidden></div>
+    </main>
+  </section>
+
+  <div id="busy" hidden></div>
+  <script src="assets/config.js"></script>
+  <script src="assets/common.js"></script>
+  <script src="assets/admin.js"></script>
+</body>
+</html>
