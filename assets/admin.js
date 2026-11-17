@@ -482,7 +482,7 @@
       '<p class="small muted">每年 1/11 13:00 會自動鎖定去年（若還有待審核申請，會每小時提醒並延後鎖定）。</p></div>' +
 
       '<div class="card"><h3 style="margin-top:0">我的密碼</h3>' +
-      '<p class="small muted" style="margin:0 0 8px">管理員帳號的新密碼至少 10 碼，需同時包含英文與數字。</p>' +
+      '<p class="small muted" style="margin:0 0 8px">管理員帳號的新密碼 10–20 碼，需同時包含英文與數字。</p>' +
       '<div class="row2"><input class="input" id="op" type="password" placeholder="目前的密碼" autocomplete="current-password"><input class="input" id="np" type="password" placeholder="新密碼" autocomplete="new-password"></div>' +
       '<div class="btn-row"><button class="btn ghost" id="pwBtn">修改密碼</button></div></div>' +
 
@@ -518,7 +518,7 @@
     $('#unlockBtn').onclick = lockFn(false);
     $('#pwBtn').onclick = async function () {
       var n = $('#np').value;
-      if (n.length < 10 || !/[A-Za-z]/.test(n) || !/\d/.test(n)) return BM.toast('新密碼至少 10 碼，需同時有英文與數字', true);
+      if (n.length < 10 || n.length > 20 || !/[A-Za-z]/.test(n) || !/\d/.test(n)) return BM.toast('新密碼需 10–20 碼，需同時有英文與數字', true);
       var r = await call('changeMyPassword', { oldPassword: $('#op').value, newPassword: n });
       BM.store('adminToken', r.token);
       BM.store('staffToken', r.token);

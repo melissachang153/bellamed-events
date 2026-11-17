@@ -52,7 +52,7 @@
     $('#pwView').hidden = false;
     $('#pwHello').textContent = r.staff.name + '，你好';
     $('#pwRules').innerHTML = pwAdmin
-      ? '<li>管理員帳號：至少 10 碼，需同時包含英文與數字</li><li>不能包含生日</li>'
+      ? '<li>管理員帳號：10–20 碼，需同時包含英文與數字</li><li>不能包含生日</li>'
       : '<li>6–20 碼，英文或數字</li><li>不能包含生日</li>';
     $('#newPw').value = '';
     $('#newPw2').value = '';
