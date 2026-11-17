@@ -184,3 +184,11 @@ table.grid th { color: var(--muted); font-weight: 600; background: #fafbfa; posi
 }
 .toast.bad { background: var(--bad); }
 .toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+/* 背景更新進度條 */
+#quietBar {
+  position: fixed; top: 0; left: 0; height: 3px; width: 0; z-index: 300; background: #8fd3b0;
+  opacity: 0; transition: opacity .2s;
+}
+#quietBar.on { opacity: 1; width: 100%; animation: qb 1.2s ease-in-out infinite; }
+@keyframes qb { 0% { transform: translateX(-100%); } 100% { transform: translateX(100%); } }

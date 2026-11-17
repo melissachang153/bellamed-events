@@ -71,22 +71,55 @@ var BM = (function () {
     setTimeout(function () { t.classList.add('show'); }, 10);
     setTimeout(function () { t.classList.remove('show'); setTimeout(function () { t.remove(); }, 300); }, 2800);
   }
-  var busyCount = 0;
+  var busyCount = 0, quietCount = 0;
   function busy(on) {
     busyCount += on ? 1 : -1;
     var el = document.getElementById('busy');
     if (el) el.hidden = busyCount <= 0;
   }
-  async function run(fn) {
-    busy(true);
+  // 背景更新：頂端細進度條，不擋畫面
+  function quiet(on) {
+    quietCount += on ? 1 : -1;
+    var bar = document.getElementById('quietBar');
+    if (!bar) { bar = document.createElement('div'); bar.id = 'quietBar'; document.body.appendChild(bar); }
+    bar.classList.toggle('on', quietCount > 0);
+  }
+  // opts.silent：已有畫面時在背景更新（不轉圈、失敗也不跳錯誤，除非登入失效）
+  async function run(fn, opts) {
+    var silent = opts && opts.silent;
+    silent ? quiet(true) : busy(true);
     try { return await fn(); }
     catch (e) {
       if (e.pwchange && BM.onPwChange) BM.onPwChange();
-      else toast(e.message, true);
+      else if (!silent || e.auth) toast(e.message, true);
       if (e.auth && BM.onAuthFail) BM.onAuthFail();
       throw e;
     }
-    finally { busy(false); }
+    finally { silent ? quiet(false) : busy(false); }
+  }
+
+  // ---- 本機暫存：先顯示上次的資料，再背景更新 ----
+  function cache(k, v) {
+    var key = 'c.' + k;
+    if (v === undefined) return store(key);
+    store(key, v === null ? null : { t: Date.now(), v: v });
+  }
+  function cached(k) { var c = cache(k); return c ? c.v : null; }
+  function clearCache() {
+    try {
+      Object.keys(localStorage).forEach(function (k) { if (k.indexOf(KEY + 'c.') === 0) localStorage.removeItem(k); });
+    } catch (e) { }
+  }
+  // 有暫存就馬上 render，同時背景取得最新資料；資料有變才重畫
+  async function swr(key, fetcher, render) {
+    var old = cached(key);
+    if (old !== null) render(old, true);
+    var fresh;
+    try { fresh = await run(fetcher, { silent: old !== null }); }
+    catch (e) { return old; }
+    cache(key, fresh);
+    if (old === null || JSON.stringify(old) !== JSON.stringify(fresh)) render(fresh, false);
+    return fresh;
   }
 
   function modal(html, opts) {
@@ -121,7 +154,7 @@ var BM = (function () {
   }
 
   // ---- 版本與問題回報 ----
-  var VERSION = '1.4.1';
+  var VERSION = '1.5.0';
   var UPDATED = '2026/11/17';
 
   function footer(pageName, whoFn) {
@@ -150,7 +183,7 @@ var BM = (function () {
   }
 
   return {
-    VERSION: VERSION, UPDATED: UPDATED, footer: footer,
+    VERSION: VERSION, UPDATED: UPDATED, footer: footer, cache: cache, cached: cached, clearCache: clearCache, swr: swr,
     store: store, api: api, fmtDate: fmtDate, fmtRange: fmtRange, today: today, esc: esc, sess: sess,
     img: img, fileUrl: fileUrl, linkify: linkify, toast: toast, busy: busy, run: run, modal: modal,
     meetTimesHtml: meetTimesHtml, onAuthFail: null, onPwChange: null

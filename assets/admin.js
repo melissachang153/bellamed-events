@@ -19,6 +19,7 @@
     BM.store('adminToken', null);
     BM.store('staffToken', null);
     BM.store('staff', null);
+    BM.clearCache();
     location.href = 'index.html';
   }
   async function start() {
@@ -26,11 +27,13 @@
     $('#logoutBtn').hidden = false;
     await reload();
   }
+  // 有暫存就先顯示，再背景更新；操作後直接用伺服器回傳的最新資料
   async function reload(data) {
-    D = data || await call('adminData');
-    render();
+    if (data) { D = data; BM.cache('adminData', D); render(); return; }
+    await BM.swr('adminData', function () { return BM.api('adminData', { token: token() }); }, function (d) { D = d; render(); });
   }
   function render() {
+    if (!D) return;
     var pending = D.corrections.filter(function (c) { return c.status === 'pending'; }).length;
     $('#tabs [data-tab=review]').innerHTML = '審核' + (pending ? '<span class="badge warn">' + pending + '</span>' : '');
     if (S.tab === 'events') renderEvents();
@@ -375,15 +378,18 @@
     box.innerHTML = '<label class="f">年度</label><select class="input" id="ry">' + opts + '</select>' +
       '<p class="small muted">要手動修改某人的次數：到「活動」→ 該活動的「報名名單」勾選/取消。</p><div id="rl"></div>';
     $('#ry').onchange = function () { S.year = this.value; renderRecords(); };
-    var rec = await call('adminRecords', { year: S.year });
-    $('#rl').innerHTML = '<p class="small muted">活動結束後隔日計入。' + (rec.updatedAt ? '上次更新：' + esc(rec.updatedAt) : '') + '</p>' +
-      (rec.locked ? '<div class="notice">🔒 ' + rec.year + ' 年度已鎖定</div>' : '') +
-      '<div class="scroll-x card" style="padding:0"><table class="grid"><thead><tr><th>員工</th><th>參加場次</th><th>次數</th></tr></thead><tbody>' +
-      rec.people.map(function (p) {
-        return '<tr><td style="white-space:nowrap">' + esc(p.id + ' ' + p.name) + '</td><td>' +
-          (p.items.map(function (i) { return esc(i.date.slice(5).replace('-', '/') + ' ' + i.name) + ' <span class="muted">(' + i.sessions.map(BM.sess).join('、') + ')</span>'; }).join('<br>') || '<span class="muted">—</span>') +
-          '</td><td><b>' + p.total + '</b></td></tr>';
-      }).join('') + '</tbody></table></div>';
+    var year = S.year;
+    await BM.swr('rec_' + year, function () { return BM.api('adminRecords', { token: token(), year: year }); }, function (rec) {
+      if (S.year !== year || !$('#rl')) return;
+      $('#rl').innerHTML = '<p class="small muted">活動結束後隔日計入。' + (rec.updatedAt ? '上次更新：' + esc(rec.updatedAt) : '') + '</p>' +
+        (rec.locked ? '<div class="notice">🔒 ' + rec.year + ' 年度已鎖定</div>' : '') +
+        '<div class="scroll-x card" style="padding:0"><table class="grid"><thead><tr><th>員工</th><th>參加場次</th><th>次數</th></tr></thead><tbody>' +
+        rec.people.map(function (p) {
+          return '<tr><td style="white-space:nowrap">' + esc(p.id + ' ' + p.name) + '</td><td>' +
+            (p.items.map(function (i) { return esc(i.date.slice(5).replace('-', '/') + ' ' + i.name) + ' <span class="muted">(' + i.sessions.map(BM.sess).join('、') + ')</span>'; }).join('<br>') || '<span class="muted">—</span>') +
+            '</td><td><b>' + p.total + '</b></td></tr>';
+        }).join('') + '</tbody></table></div>';
+    });
   }
 
   // ======================= 員工 =======================

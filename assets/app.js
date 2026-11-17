@@ -13,6 +13,7 @@
     BM.store('adminToken', null);
     BM.store('staffToken', null);
     BM.store('staff', null);
+    BM.clearCache(); // 共用裝置也不會留下別人的資料
     S.me = null;
     showLogin();
   }
@@ -100,7 +101,8 @@
     $('#who').textContent = me.admin ? '管理員' : me.name.split(' ')[0];
     $('#tabs [data-tab=corrections]').hidden = !!me.admin; // 管理員不需要修正申請
     if (me.admin && S.tab === 'corrections') switchTab('events');
-    loadEvents();
+    S.events = BM.cached('ev_' + (me.id || 'admin')) || [];
+    loadEvents().then(prefetch);
   }
 
   function switchTab(t) {
@@ -114,8 +116,20 @@
 
   // ---------------- 活動 ----------------
   async function loadEvents() {
-    S.events = await BM.run(function () { return BM.api('events', { token: token() }); });
-    renderEvents();
+    await BM.swr('ev_' + (S.me.id || 'admin'), function () { return BM.api('events', { token: token() }); }, function (evs) {
+      S.events = evs;
+      if (!document.querySelector('.modal-wrap')) renderEvents(); // 正在看活動內容時不打斷
+    });
+  }
+  // 登入後在背景先抓好其他分頁的資料，切換時就不用等
+  function prefetch() {
+    var y = BM.today().slice(0, 4);
+    BM.run(function () { return BM.api('records', { token: token(), year: y }); }, { silent: true })
+      .then(function (r) { BM.cache('rec_' + y, r); }).catch(function () { });
+    if (!S.me.admin) {
+      BM.run(function () { return BM.api('myCorrections', { token: token() }); }, { silent: true })
+        .then(function (r) { BM.cache('cor_' + S.me.id, r); }).catch(function () { });
+    }
   }
 
   function evCard(e) {
@@ -226,6 +240,7 @@
         sessions.push({ date: p[0], session: p[1] });
       });
       S.events = await BM.run(function () { return BM.api('register', { token: token(), eventId: e.id, sessions: sessions }); });
+      BM.cache('ev_' + S.me.id, S.events);
       BM.toast('已儲存報名');
       m.close();
       renderEvents();
@@ -241,10 +256,13 @@
     box.innerHTML = '<div class="row2" style="align-items:end"><div><label class="f" for="yearSel">年度</label>' +
       '<select class="input" id="yearSel">' + opts + '</select></div><div id="lockInfo"></div></div><div id="recList"></div>';
     $('#yearSel').onchange = function () { S.year = this.value; loadRecords(); };
-    var rec = await BM.run(function () { return BM.api('records', { token: token(), year: S.year }); });
-    $('#lockInfo').innerHTML = (rec.updatedAt ? '<div class="small muted">上次更新：' + esc(rec.updatedAt) + '</div>' : '') +
-      (rec.locked ? '<span class="badge gray">🔒 已結算鎖定</span>' : '');
-    $('#recList').innerHTML = renderRecords(rec);
+    var year = S.year;
+    await BM.swr('rec_' + year, function () { return BM.api('records', { token: token(), year: year }); }, function (rec) {
+      if (S.year !== year || !$('#recList')) return; // 已切換到別的年度
+      $('#lockInfo').innerHTML = (rec.updatedAt ? '<div class="small muted">上次更新：' + esc(rec.updatedAt) + '</div>' : '') +
+        (rec.locked ? '<span class="badge gray">🔒 已結算鎖定</span>' : '');
+      $('#recList').innerHTML = renderRecords(rec);
+    });
   }
 
   function renderRecords(rec) {
@@ -262,12 +280,8 @@
   async function loadCorrections() {
     var box = $('#tab-corrections');
     var today = BM.today();
-    var list = await BM.run(function () { return BM.api('myCorrections', { token: token() }); });
+    var listKey = 'cor_' + S.me.id;
     var evs = S.events.filter(function (e) { return e.status !== 'cancelled' && e.dates.some(function (d) { return d <= today; }); }).slice().reverse();
-
-    var statusBadge = function (s) {
-      return s === 'pending' ? '<span class="badge warn">待審核</span>' : s === 'approved' ? '<span class="badge">已通過</span>' : '<span class="badge bad">已退回</span>';
-    };
     var TYPES = [['add', '申請補登', '有去但沒報名'], ['remove', '申請移除', '有報名但沒去'], ['swap', '申請修正', '報錯場次，同時補登一場、移除一場']];
     box.innerHTML =
       '<div class="card"><h3 style="margin:0">提出申請</h3>' +
@@ -282,12 +296,7 @@
       '<div id="cRmBox" hidden><label class="f" for="cRm">移除場次</label><select class="input" id="cRm"></select></div>' +
       '<label class="f" for="cReason">說明（選填）</label><textarea class="input" id="cReason" maxlength="200" placeholder="例如：當天臨時參加"></textarea>' +
       '<div class="btn-row"><button class="btn block" id="cSubmit">送出申請</button></div></div>' +
-      '<div class="section-title">我的申請紀錄</div>' +
-      (list.length ? list.map(function (c) {
-        return '<div class="card list-item"><div class="grow"><b>' + esc(c.eventName) + '</b><div>' + esc(c.summary || '') + '</div>' +
-          (c.reason ? '<div class="small muted">' + esc(c.reason) + '</div>' : '') +
-          '<div class="small muted">' + c.createdAt.slice(0, 10).replace(/-/g, '/') + ' 送出</div></div>' + statusBadge(c.status) + '</div>';
-      }).join('') : '<div class="card empty">尚無申請紀錄</div>');
+      '<div class="section-title">我的申請紀錄</div><div id="cList"></div>';
 
     var ev = function () { return S.events.filter(function (e) { return e.id === $('#cEv').value; })[0]; };
     var type = function () { return $('input[name=ctype]:checked').value; };
@@ -325,10 +334,27 @@
       var p = { token: token(), eventId: e.id, type: t, reason: $('#cReason').value };
       if (t !== 'remove') { p.date = add.split('|')[0]; p.session = add.split('|')[1]; }
       if (t !== 'add') { p.rmDate = rm.split('|')[0]; p.rmSession = rm.split('|')[1]; }
-      await BM.run(function () { return BM.api('submitCorrection', p); });
+      var newList = await BM.run(function () { return BM.api('submitCorrection', p); });
+      BM.cache(listKey, newList);
       BM.toast('已送出，等待管理員審核');
       loadCorrections();
     };
+    // 申請紀錄：先顯示暫存，再背景更新（只更新清單，不會清掉正在填的表單）
+    BM.swr(listKey, function () { return BM.api('myCorrections', { token: token() }); }, function (list) {
+      var el = $('#cList');
+      if (el) el.innerHTML = corListHtml(list);
+    });
+  }
+
+  function corListHtml(list) {
+    var statusBadge = function (s) {
+      return s === 'pending' ? '<span class="badge warn">待審核</span>' : s === 'approved' ? '<span class="badge">已通過</span>' : '<span class="badge bad">已退回</span>';
+    };
+    return list.length ? list.map(function (c) {
+      return '<div class="card list-item"><div class="grow"><b>' + esc(c.eventName) + '</b><div>' + esc(c.summary || '') + '</div>' +
+        (c.reason ? '<div class="small muted">' + esc(c.reason) + '</div>' : '') +
+        '<div class="small muted">' + c.createdAt.slice(0, 10).replace(/-/g, '/') + ' 送出</div></div>' + statusBadge(c.status) + '</div>';
+    }).join('') : '<div class="card empty">尚無申請紀錄</div>';
   }
 
   // ---------------- 啟動 ----------------
