@@ -154,7 +154,7 @@ var BM = (function () {
   }
 
   // ---- 版本與問題回報 ----
-  var VERSION = '1.5.0';
+  var VERSION = '1.6.0';
   var UPDATED = '2026/11/17';
 
   function footer(pageName, whoFn) {

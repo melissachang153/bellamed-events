@@ -192,3 +192,9 @@ table.grid th { color: var(--muted); font-weight: 600; background: #fafbfa; posi
 }
 #quietBar.on { opacity: 1; width: 100%; animation: qb 1.2s ease-in-out infinite; }
 @keyframes qb { 0% { transform: translateX(-100%); } 100% { transform: translateX(100%); } }
+
+/* 活動儲存方式 */
+.save-opts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 8px; }
+.save-opts .btn { flex-direction: column; gap: 2px; padding: 10px 8px; min-height: 64px; }
+.save-opts .btn span { font-size: 12px; opacity: .8; font-weight: normal; }
+@media (max-width: 480px) { .save-opts { grid-template-columns: 1fr; } }

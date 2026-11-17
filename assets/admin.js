@@ -133,7 +133,7 @@
     var mt = JSON.parse(JSON.stringify(e.meetTimes || {}));
 
     var m = BM.modal('<h2>' + (isNew ? '新增活動' : '編輯活動') + '</h2>' +
-      '<p class="small muted" style="margin:0">所有欄位都可以之後再補，填到一半也可以先「儲存」。</p>' +
+      '<p class="small muted" style="margin:0">所有欄位都可以之後再補，填到一半可以先存成草稿。</p>' +
       '<label class="f">活動名稱 *</label><input class="input" id="eName" value="' + esc(e.name) + '">' +
       '<label class="f">日期（可多天）</label><div id="dateList"></div>' +
       '<div style="display:flex;gap:8px"><input class="input" type="date" id="dateAdd"><button class="btn ghost" id="dateAddBtn" style="flex:none">加入</button></div>' +
@@ -145,7 +145,14 @@
       '<label class="f">集合時間（每天）</label><div id="mtList"></div>' +
       '<label class="f">其他說明</label><textarea class="input" id="eNotes">' + esc(e.notes) + '</textarea>' +
       '<div id="fileBox"></div>' +
-      '<div class="btn-row"><button class="btn block" id="eSave">儲存</button></div>', { wide: true });
+      (e.status === 'cancelled'
+        ? '<div class="btn-row"><button class="btn block" data-save="keep">儲存（此活動已取消）</button></div>'
+        : '<div class="section-title" style="margin-top:20px">儲存方式' + (isNew ? '' : '（目前：' + ({ draft: '草稿', published: '已公開' })[e.status] + '）') + '</div>' +
+          '<div class="save-opts">' +
+          '<button class="btn ghost" data-save="draft"><b>存成草稿</b><span>只有你看得到</span></button>' +
+          '<button class="btn ghost" data-save="published"><b>儲存並公開</b><span>員工可以報名</span></button>' +
+          '<button class="btn" data-save="push"><b>公開並推播</b><span>接著預覽 LINE 推播</span></button>' +
+          '</div>'), { wide: true });
     var root = m.el;
 
     function collectMt() {
@@ -228,7 +235,8 @@
       $('#dateAdd', root).value = '';
       drawDates();
     };
-    $('#eSave', root).onclick = async function () {
+    // 三種儲存方式：草稿 / 公開 / 公開並推播
+    async function save(mode) {
       collectMt();
       var payload = {
         id: e.id || '', name: $('#eName', root).value.trim(), dates: dates, location: $('#eLoc', root).value,
@@ -236,17 +244,19 @@
         meetPlace: $('#eMeetPlace', root).value, meetTimes: mt, notes: $('#eNotes', root).value
       };
       if (!payload.name) return BM.toast('請至少填寫活動名稱', true);
-      D = await call('saveEvent', { event: payload });
-      BM.toast('已儲存');
-      if (!e.id) {
-        // 新活動：找出剛建立的那筆，讓使用者可以接著上傳
-        var created = D.events.filter(function (x) { return x.name === payload.name; })
-          .sort(function (a, b) { return b.createdAt.localeCompare(a.createdAt); })[0];
-        if (created) { e = created; drawFiles(); render(); return; }
-      }
-      render();
+      if (mode === 'draft' && e.status === 'published' && !confirm('改成草稿後，員工就看不到這個活動，也不能報名。確定？')) return;
+      if (mode === 'push' && !dates.length) return BM.toast('推播前請先設定日期', true);
+      var status = mode === 'push' ? 'published' : mode === 'keep' ? undefined : mode;
+      var data = await call('saveEvent', { event: payload, status: status });
+      await reload(data);
+      var saved = D.events.filter(function (x) { return x.id === data.savedId; })[0];
+      if (saved) e = saved;
+      if (mode === 'push') { m.close(); BM.toast('已公開，請確認推播內容'); openPush(); return; }
+      BM.toast(mode === 'draft' ? '已存成草稿' : mode === 'published' ? '已公開，員工可以報名了' : '已儲存');
+      if (mode === 'draft' && isNew) { isNew = false; drawFiles(); return; } // 新草稿：留在畫面上，方便接著上傳海報
       m.close();
-    };
+    }
+    $$('[data-save]', root).forEach(function (b) { b.onclick = function () { save(b.dataset.save); }; });
     drawDates();
     drawFiles();
   }
