@@ -41,7 +41,12 @@
     BM.store('staffToken', r.token);
     BM.store('staff', r.staff);
     BM.store('adminToken', r.role === 'admin' ? r.token : null); // 管理員：管理頁免再登入
-    startApp(r.staff);
+    // 登入回應已附上活動清單：直接存起來，省掉第二次往返
+    if (r.events && r.staff && r.staff.pages) {
+      var k = r.staff.admin ? 'admin' : String(r.staff.name).toLowerCase();
+      BM.cache('ev_' + k, r.events);
+      startApp(r.staff, true);
+    } else startApp(r.staff);
   }
 
   // ---------- 首次登入改密碼 ----------
@@ -96,7 +101,7 @@
   // 依角色與「設定 → 頁面權限」決定看得到哪些分頁
   function canSee(t) { return !!(S.me.pages && S.me.pages[t]); }
 
-  function startApp(me) {
+  function startApp(me, fresh) {
     if (!me || !me.pages) { logout(); return; } // 舊版登入資料：請重新登入
     S.me = me;
     $('#loginView').hidden = true;
@@ -115,7 +120,7 @@
     $('#tabs').hidden = false;
     S.events = BM.cached('ev_' + myKey()) || [];
     switchTab(canSee(S.tab) ? S.tab : first);
-    if (canSee('events')) loadEvents().then(prefetch); else prefetch();
+    if (canSee('events') && !fresh) loadEvents().then(prefetch); else prefetch();
   }
 
   function switchTab(t) {
@@ -220,10 +225,8 @@
     }
 
     var sess = '';
-    if (S.me.admin) {
-      sess = '<div class="notice ok">管理員檢視模式：可以查看員工看到的畫面，但不能報名。要修改報名請到管理頁的「報名名單」。</div>';
-    } else if (!S.me.counted) {
-      sess = ''; // 不列入統計（例如主管）：只顯示活動內容與報名名單，不放報名區也不放說明
+    if (S.me.admin || !S.me.counted) {
+      sess = ''; // 管理員或不列入統計（例如主管）：只顯示活動內容與報名名單，不放報名區也不放說明
     } else if (!cancelled) {
       sess = '<h3 style="margin:18px 0 4px">我要報名</h3><p class="muted small" style="margin:0">上午、下午各算 0.5 次，可以只報其中一場。</p><div class="sess-grid">' +
         e.dates.map(function (d) {

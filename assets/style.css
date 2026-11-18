@@ -158,7 +158,10 @@ table.grid th { color: var(--muted); font-weight: 600; background: #fafbfa; posi
 th.sortable { cursor: pointer; user-select: none; white-space: nowrap; }
 th.sortable:hover, th.sortable.on { color: var(--brand); }
 .sort-hint { opacity: .35; font-size: 11px; }
-.rec-table td.num, .rec-table th:last-child { text-align: right; white-space: nowrap; }
+/* 員工、次數欄置中，左右留白不貼邊 */
+.rec-table th:first-child, .rec-table td:first-child,
+.rec-table th:last-child, .rec-table td:last-child { text-align: center; white-space: nowrap; padding-left: 14px; padding-right: 14px; }
+.rec-table td[colspan] { text-align: center; }
 .rec-table td div + div { margin-top: 2px; }
 
 /* 一排按鈕選項（取代下拉選單） */

@@ -160,8 +160,8 @@ var BM = (function () {
   }
 
   // ---- 版本與問題回報 ----
-  var VERSION = '1.8.10'; // 與後端 gas/Code.gs 的 BACKEND_VERSION 一律相同
-  var UPDATED = '2026/11/18';
+  var VERSION = '1.8.11'; // 與後端 gas/Code.gs 的 BACKEND_VERSION 一律相同
+  var UPDATED = '2026/11/19';
 
   function footer(pageName, whoFn) {
     var f = document.createElement('footer');
