@@ -328,7 +328,7 @@
     var stars = p.starIds.slice();
     var targetName = p.target === 'main' ? '正式群組' : '測試群組';
     function text() {
-      var lines = ['【活動更新】'];
+      var lines = ['【活動更新】', ''];
       p.items.forEach(function (e) {
         lines.push((stars.indexOf(e.id) >= 0 ? '★' : '') + BM.fmtRange(e.dates) + ' ' + e.name + (e.host ? '（' + e.host + '主辦）' : '') + (e.status === 'cancelled' ? '〔已取消〕' : ''));
       });

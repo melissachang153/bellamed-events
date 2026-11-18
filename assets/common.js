@@ -46,9 +46,11 @@ var BM = (function () {
   function fmtRange(dates) {
     if (!dates || !dates.length) return '日期待定';
     var a = dates[0], b = dates[dates.length - 1];
+    // 和後端推播格式一致：2026/12/05-06（同月只寫日）、2026/05/30-06/02
     if (a === b) return a.replace(/-/g, '/');
-    if (a.slice(0, 4) === b.slice(0, 4)) return a.replace(/-/g, '/') + '～' + b.slice(5).replace('-', '/');
-    return a.replace(/-/g, '/') + '～' + b.replace(/-/g, '/');
+    if (a.slice(0, 7) === b.slice(0, 7)) return a.replace(/-/g, '/') + '-' + b.slice(8);
+    if (a.slice(0, 4) === b.slice(0, 4)) return a.replace(/-/g, '/') + '-' + b.slice(5).replace('-', '/');
+    return a.replace(/-/g, '/') + '-' + b.replace(/-/g, '/');
   }
   function today() {
     var d = new Date();
@@ -158,7 +160,7 @@ var BM = (function () {
   }
 
   // ---- 版本與問題回報 ----
-  var VERSION = '1.8.3';
+  var VERSION = '1.8.5';
   var UPDATED = '2026/11/18';
   var HIST_NOTE = '2026/10/03 以前的紀錄由舊紀錄表匯入。原紀錄沒有區分上、下午場，半天的場次統一記為「上午場」，不影響次數統計。';
 
