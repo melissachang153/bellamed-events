@@ -358,6 +358,8 @@
       var newList = await BM.run(function () { return BM.api('submitCorrection', p); });
       BM.cache(listKey, newList);
       BM.toast('已送出並生效');
+      // 申請已生效：重新抓活動（我的場次已改變），表單選項才會正確
+      try { S.events = await BM.api('events', { token: token() }); BM.cache('ev_' + myKey(), S.events); } catch (e) { }
       loadCorrections();
     };
     // 申請紀錄：先顯示暫存，再背景更新（只更新清單，不會清掉正在填的表單）

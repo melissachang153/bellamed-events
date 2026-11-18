@@ -76,6 +76,32 @@
     if (type === 'remove') return '移除 ' + f(d, s);
     return '修正：補登 ' + f(d, s) + '，移除 ' + f(rd, rs);
   }
+  // 測試頁送出的修正申請（已生效）：套用到正式紀錄的快照上，畫面才會跟正式版一樣
+  var OPS = [];
+  function applyOpsToRecords(rec) {
+    var t = today();
+    OPS.forEach(function (o) {
+      if (o.date.slice(0, 4) !== String(rec.year)) return;
+      if (o.ev.dates[o.ev.dates.length - 1] >= t) return; // 正式版：活動結束隔天才計入
+      var p = rec.people.filter(function (x) { return x.name === o.en; })[0];
+      if (!p) return;
+      var it = p.items.filter(function (i) { return i.date === o.date && i.name === o.ev.name; })[0];
+      var has = !!(it && it.sessions.indexOf(o.session) >= 0);
+      if (o.on && !has) {
+        if (!it) { it = { date: o.date, name: o.ev.name, sessions: [], count: 0 }; p.items.push(it); }
+        it.sessions.push(o.session);
+        it.sessions.sort();
+        p.total += 0.5;
+      } else if (!o.on && has) {
+        it.sessions = it.sessions.filter(function (x) { return x !== o.session; });
+        if (!it.sessions.length) p.items = p.items.filter(function (x) { return x !== it; });
+        p.total -= 0.5;
+      }
+      if (it) it.count = it.sessions.length * 0.5;
+      p.items.sort(function (a, b) { return a.date.localeCompare(b.date); });
+    });
+  }
+
   function myCorr(s) {
     return DATA.corrections.filter(function (c) { return c.en === s.en; }).map(function (c) {
       return { eventName: c.eventName, summary: c.summary, reason: c.reason, status: c.status, createdAt: c.createdAt };
@@ -141,7 +167,9 @@
       if (!canSee(s, 'records')) return fail('你的帳號沒有這個頁面的權限');
       var y = String(d.year);
       var get = REC[y] || (REC[y] = BM.realApi('adminRecords', { token: ADMIN, year: y }));
-      return get.then(function (rec) {
+      return get.then(function (snap) {
+        var rec = JSON.parse(JSON.stringify(snap));
+        applyOpsToRecords(rec);
         var all = s.role === 'manager';
         return { year: rec.year, updatedAt: rec.updatedAt, locked: rec.locked, all: all,
                  people: all ? rec.people : rec.people.filter(function (p) { return p.name === s.en; }) };
@@ -160,8 +188,18 @@
       var ev = DATA.events.filter(function (e) { return e.id === d.eventId; })[0];
       if (!ev) return fail('活動不存在');
       if (['add', 'remove', 'swap'].indexOf(d.type) < 0) return fail('請選擇申請類型');
-      var dup = DATA.corrections.some(function (c) { return c.status === 'pending' && c.en === s.en && c.eventId === ev.id; });
-      if (dup) return fail('這個活動已有一筆待審核的申請，請等審核完成');
+      var isReg = function (dt, ss) { return ev.registrants.some(function (r) { return r.en === s.en && r.date === dt && r.session === ss; }); };
+      if (d.type !== 'remove' && isReg(d.date, d.session)) return fail('補登的場次你已經有報名紀錄了');
+      if (d.type !== 'add' && !isReg(d.rmDate, d.rmSession)) return fail('移除的場次你沒有報名紀錄');
+      // 和正式版一樣「送出就生效」：改報名名單，參加紀錄也會跟著變
+      var ops = [];
+      if (d.type !== 'add') ops.push({ en: s.en, ev: ev, date: d.rmDate, session: d.rmSession, on: false });
+      if (d.type !== 'remove') ops.push({ en: s.en, ev: ev, date: d.date, session: d.session, on: true });
+      ops.forEach(function (o) {
+        ev.registrants = ev.registrants.filter(function (r) { return !(r.en === o.en && r.date === o.date && r.session === o.session); });
+        if (o.on) ev.registrants.push({ en: o.en, date: o.date, session: o.session });
+        OPS.push(o);
+      });
       var date = d.type === 'remove' ? d.rmDate : d.date, ses = d.type === 'remove' ? d.rmSession : d.session;
       var sum = summary(d.type, date, ses, d.rmDate, d.rmSession);
       DATA.corrections.push({ en: s.en, eventId: ev.id, eventName: ev.name, summary: sum, reason: String(d.reason || '').slice(0, 200),
