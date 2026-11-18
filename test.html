@@ -11,13 +11,10 @@
   <link rel="stylesheet" href="assets/style.css">
 </head>
 <body class="test-mode">
-  <div class="test-banner" id="testBanner">
-    <span>🧪 測試區・所有操作都不會保存</span>
-    <button type="button" id="testReset">重設測試資料</button>
-    <button type="button" id="testBack">回管理頁</button>
-  </div>
   <header class="topbar">
-    <h1>醫學會活動報名（測試）</h1>
+    <h1><span class="hide-sm">醫學會活動報名</span>（測試）</h1>
+    <button type="button" id="testReset">重設<span class="hide-sm">測試資料</span></button>
+    <button type="button" id="testBack"><span class="hide-sm">回</span>管理頁</button>
     <span class="who" id="who"></span>
     <button id="adminBtn" hidden>管理頁</button>
     <button id="logoutBtn" hidden>登出</button>
@@ -27,7 +24,6 @@
     <main>
       <div class="card login">
         <h2>登入</h2>
-        <p class="small muted" style="margin:0">帳號：任何一位員工的英文名<br>密碼：一律輸入 <b>test</b></p>
         <label class="f" for="loginAcct">帳號</label>
         <input class="input" id="loginAcct" type="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
         <label class="f" for="loginPw">密碼</label>

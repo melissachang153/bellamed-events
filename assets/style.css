@@ -175,13 +175,6 @@ body.test-mode {
   --brand: #c2570c; --brand-2: #fff1e6; --ok: #c2570c;
 }
 body.test-mode .topbar { background: #c2570c; }
-.test-banner {
-  position: sticky; top: 0; z-index: 20; background: #ea7a1a; color: #fff; text-align: center;
-  padding: 6px 12px; font-size: 14px; font-weight: 600; display: flex; gap: 10px; justify-content: center; align-items: center; flex-wrap: wrap;
-}
-.test-banner button { background: rgba(255,255,255,.2); border: 1px solid rgba(255,255,255,.6); color: #fff; border-radius: 8px; padding: 3px 10px; font-size: 13px; cursor: pointer; }
-body.test-mode .topbar { top: 34px; }
-body.test-mode .tabs { top: 84px; }
 body.test-mode #quietBar { background: #ffc58f; }
 
 .preview {
@@ -244,3 +237,12 @@ details.set-sec > summary.set-sum::after { content: "▾"; margin-left: auto; co
 details.set-sec[open] > summary.set-sum::after { transform: rotate(180deg); }
 details.set-sec[open] > summary.set-sum { border-bottom: 1px solid var(--line); margin-bottom: 10px; }
 details.set-sec[open] { padding-bottom: 14px; }
+
+/* 頂端列：文字不換行；手機上縮短按鈕文字 */
+.topbar h1 { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.topbar button, .topbar .who { white-space: nowrap; flex: none; }
+@media (max-width: 480px) {
+  .topbar { gap: 6px; padding: 12px 10px; }
+  .topbar h1 { font-size: 16px; }
+  .hide-sm { display: none; }
+}
