@@ -232,3 +232,15 @@ body.test-mode #quietBar { background: #ffc58f; }
 .date-range { display: grid; grid-template-columns: 1fr 1fr auto; gap: 8px; align-items: end; }
 .date-range > div { display: flex; flex-direction: column; gap: 2px; }
 @media (max-width: 480px) { .date-range { grid-template-columns: 1fr 1fr; } .date-range .btn { grid-column: 1 / -1; } }
+
+/* 設定頁：可收合的區塊 */
+details.set-sec { padding: 0 16px; }
+details.set-sec > summary.set-sum {
+  list-style: none; cursor: pointer; margin: 0 -16px; padding: 14px 16px; font-weight: 600; font-size: 17px;
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+}
+details.set-sec > summary.set-sum::-webkit-details-marker { display: none; }
+details.set-sec > summary.set-sum::after { content: "▾"; margin-left: auto; color: var(--muted); transition: transform .2s; }
+details.set-sec[open] > summary.set-sum::after { transform: rotate(180deg); }
+details.set-sec[open] > summary.set-sum { border-bottom: 1px solid var(--line); margin-bottom: 10px; }
+details.set-sec[open] { padding-bottom: 14px; }

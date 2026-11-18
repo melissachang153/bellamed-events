@@ -88,7 +88,7 @@
       '<div class="btn-row" style="margin-top:0"><button class="btn" id="newEv">＋ 新增活動</button>' +
       '<button class="btn ghost" id="pushBtn">📣 推播活動更新</button></div>' +
       '<div class="small muted" style="margin-top:6px">推播目標：<b>' + (D.settings.pushTarget === 'main' ? '正式群組' : '測試群組') + '</b>（可在「設定」切換）</div>' +
-      '<div class="section-title">未結束的活動</div>' + (upcoming.length ? upcoming.map(card).join('') : '<div class="card empty">尚無活動</div>') +
+      '<div class="section-title">即將到來的活動</div>' + (upcoming.length ? upcoming.map(card).join('') : '<div class="card empty">尚無活動</div>') +
       (past.length ? '<details><summary class="section-title" style="cursor:pointer">已結束的活動（' + past.length + '）</summary>' + past.map(card).join('') + '</details>' : '');
     $('#newEv').onclick = function () { openEditor(null); };
     $('#pushBtn').onclick = openPush;
@@ -421,12 +421,36 @@
   }
 
   // ======================= 員工 =======================
+  // 狀態篩選（預設只看在職）與排序（姓名／地區，再點一次反向）
+  var STAFF_VIEW = { filter: 'active', key: 'name', dir: 1 };
+  var REG_ORDER = { '北': 1, '中': 2, '南': 3 };
   function renderStaff() {
     var box = $('#tab-staff');
+    var nActive = D.staff.filter(function (s) { return s.active; }).length;
+    var nOff = D.staff.length - nActive;
+    var list = D.staff.filter(function (s) {
+      return STAFF_VIEW.filter === 'all' ? true : STAFF_VIEW.filter === 'active' ? s.active : !s.active;
+    });
+    var byName = function (a, b) { return String(a.enName || a.name).localeCompare(String(b.enName || b.name), 'en', { sensitivity: 'base' }); };
+    list.sort(function (a, b) {
+      if (STAFF_VIEW.key === 'region') return ((REG_ORDER[a.region] || 9) - (REG_ORDER[b.region] || 9)) * STAFF_VIEW.dir || byName(a, b);
+      return byName(a, b) * STAFF_VIEW.dir;
+    });
+    var th = function (key, label) {
+      var on = STAFF_VIEW.key === key;
+      return '<th class="sortable' + (on ? ' on' : '') + '" data-ssort="' + key + '" role="button" tabindex="0">' + label +
+        (on ? (STAFF_VIEW.dir > 0 ? ' ▲' : ' ▼') : ' <span class="sort-hint">▲▼</span>') + '</th>';
+    };
+    var seg = [['active', '在職（' + nActive + '）'], ['off', '停用（' + nOff + '）'], ['all', '全部']];
     box.innerHTML = '<div class="btn-row" style="margin-top:0"><button class="btn" id="addStaff">＋ 新增員工</button>' +
       '<a class="btn ghost" href="' + esc(D.settings.staffSheetUrl) + '" target="_blank" rel="noopener">開啟人員主檔</a></div>' +
-      '<div class="card scroll-x" style="padding:0;margin-top:12px"><table class="grid"><thead><tr><th>姓名</th><th>地區</th><th>角色</th><th>狀態</th><th></th></tr></thead><tbody>' +
-      D.staff.map(function (s) {
+      '<div class="choice" style="margin-top:12px" role="group" aria-label="狀態篩選">' + seg.map(function (o) {
+        return '<button class="btn small ' + (STAFF_VIEW.filter === o[0] ? '' : 'ghost') + '" data-sf="' + o[0] + '">' + o[1] + '</button>';
+      }).join('') + '</div>' +
+      '<div class="card scroll-x" style="padding:0;margin-top:10px"><table class="grid"><thead><tr>' + th('name', '姓名') + th('region', '地區') +
+      '<th>角色</th><th>狀態</th><th></th></tr></thead><tbody>' +
+      (list.length ? '' : '<tr><td colspan="5" class="muted">沒有資料</td></tr>') +
+      list.map(function (s) {
         return '<tr><td>' + esc([s.name, s.enName].filter(Boolean).join(' ')) + '</td><td>' + esc(s.region || '—') + '</td><td style="white-space:nowrap">' +
           (s.admin ? '管理員' : s.role === 'manager' ? '主管' : '職員') +
           (!s.admin && !s.counted ? '<div class="small muted">不列入統計</div>' : '') + '</td><td>' +
@@ -437,6 +461,16 @@
           '<td style="white-space:nowrap"><button class="btn small ghost" data-edit="' + s.id + '">編輯</button></td></tr>';
       }).join('') + '</tbody></table></div>';
     $('#addStaff').onclick = function () { staffEditor(null); };
+    $$('[data-sf]', box).forEach(function (b) { b.onclick = function () { STAFF_VIEW.filter = b.dataset.sf; renderStaff(); }; });
+    $$('[data-ssort]', box).forEach(function (h) {
+      var go = function () {
+        var k = h.dataset.ssort;
+        if (STAFF_VIEW.key === k) STAFF_VIEW.dir = -STAFF_VIEW.dir; else { STAFF_VIEW.key = k; STAFF_VIEW.dir = 1; }
+        renderStaff();
+      };
+      h.onclick = go;
+      h.onkeydown = function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } };
+    });
     $$('[data-edit]', box).forEach(function (b) {
       b.onclick = function () { staffEditor(D.staff.filter(function (s) { return s.id === b.dataset.edit; })[0]); };
     });
@@ -525,6 +559,7 @@
   // ======================= 設定 =======================
   // 原則：能點就不用選、能選就不用打字；點了就直接儲存
   var FB_FILTER = 'open';
+  var SET_OPEN = {}; // 設定頁各區塊是否展開（預設全部收起）
   function renderSettings() {
     var st = D.settings;
     var box = $('#tab-settings');
@@ -535,7 +570,7 @@
     var fbSched = D.feedback.filter(function (f) { return f.status === 'scheduled'; }).length;
 
     box.innerHTML =
-      '<div class="card"><h3 style="margin-top:0">LINE 推播</h3>' +
+      '<details class="card set-sec" data-sec="line"><summary class="set-sum">LINE 推播</summary>' +
       '<div class="small">' + (st.lineTokenSet ? '✅ LINE Token' : '❌ 尚未設定 LINE Token') + '　' + (st.adminBound ? '✅ 已綁定管理員 LINE' : '❌ 尚未綁定（在 LINE 私訊官方帳號「綁定 你的登入密碼」）') + '</div>' +
       '<label class="f">推播目標（點一下就切換）</label><div class="btn-row" style="margin-top:0">' +
       '<button class="btn ' + (target === 'test' ? '' : 'ghost') + '" data-pt="test">' + (target === 'test' ? '✓ ' : '') + '測試群組</button>' +
@@ -547,9 +582,9 @@
       '<p class="small muted">也可以在群組裡輸入「設為測試群組」或「設為正式群組」自動設定。</p>' +
       '<div class="btn-row"><button class="btn small ghost" id="saveGroups">儲存群組 ID</button></div></details>' +
       (st.richMenuErr ? '<div class="notice">LINE 選單尚未更新：' + esc(st.richMenuErr) + '<br>上傳最新網頁後，到最下面「進階」按「重新建立 LINE 選單」。</div>' : '') +
-      '</div>' +
+      '</details>' +
 
-      '<div class="card"><h3 style="margin-top:0">頁面權限</h3>' +
+      '<details class="card set-sec" data-sec="perm"><summary class="set-sum">頁面權限</summary>' +
       '<p class="small muted" style="margin:0 0 6px">勾選或取消就會立即儲存。管理員永遠可以看全部。</p>' +
       '<table class="grid perm-table"><thead><tr><th>頁面</th><th>主管</th><th>職員</th></tr></thead><tbody>' +
       PAGES.map(function (p) {
@@ -558,43 +593,47 @@
             return '<td><input type="checkbox" style="width:22px;height:22px;accent-color:var(--brand)" data-perm="' + r + '|' + p[0] + '"' + (D.perms[r][p[0]] ? ' checked' : '') + '></td>';
           }).join('') + '</tr>';
       }).join('') + '</tbody></table>' +
-      '<p class="small muted">「列入統計」在「員工 → 編輯」裡逐一設定：有勾的人可以報名，也會出現在報名名單與參加紀錄。</p></div>' +
+      '<p class="small muted">「列入統計」在「員工 → 編輯」裡逐一設定：有勾的人可以報名，也會出現在報名名單與參加紀錄。</p></details>' +
 
-      '<div class="card"><h3 style="margin-top:0">年度鎖定</h3>' +
+      '<details class="card set-sec" data-sec="lock"><summary class="set-sum">年度鎖定</summary>' +
       '<p class="small muted" style="margin:0 0 8px">點年份就會切換鎖定／解鎖。鎖定後該年的報名與修正都不能再改。</p>' +
       BM.yearChips('', { noNext: true, label: function (yy) { return (st.lockedYears.indexOf(yy) >= 0 ? '🔒 ' : '🔓 ') + yy; } })
         .replace('class="year-chips"', 'class="year-chips" id="lockChips"') +
-      '<p class="small muted">每年 1/11 13:00 會自動鎖定去年（若還有待審核申請，會每小時提醒並延後鎖定）。</p></div>' +
+      '<p class="small muted">每年 1/11 13:00 會自動鎖定去年（若還有待審核申請，會每小時提醒並延後鎖定）。</p></details>' +
 
-      '<div class="card"><h3 style="margin-top:0">年度紀錄備份</h3>' +
+      '<details class="card set-sec" data-sec="backup"><summary class="set-sum">年度紀錄備份</summary>' +
       '<div class="small">' + (st.backupSpreadsheetId ? '✅ 已設定　<a href="https://docs.google.com/spreadsheets/d/' + esc(st.backupSpreadsheetId) + '" target="_blank" rel="noopener">開啟備份試算表</a>' : '❌ 尚未設定（第一次備份時會自動建立）') + '</div>' +
       '<label class="f">立即備份（點年份）</label>' +
       BM.yearChips('', { noNext: true }).replace('class="year-chips"', 'class="year-chips" id="bkChips"') +
       '<details style="margin-top:8px"><summary class="small muted" style="cursor:pointer">變更備份試算表</summary>' +
       '<input class="input" id="bk" style="margin-top:6px" value="' + esc(st.backupSpreadsheetId ? 'https://docs.google.com/spreadsheets/d/' + st.backupSpreadsheetId : '') + '" placeholder="貼上試算表網址">' +
-      '<div class="btn-row"><button class="btn small ghost" id="saveBk">儲存</button></div></details></div>' +
+      '<div class="btn-row"><button class="btn small ghost" id="saveBk">儲存</button></div></details></details>' +
 
-      '<div class="card"><h3 style="margin-top:0">年底提醒</h3>' +
+      '<details class="card set-sec" data-sec="yearend"><summary class="set-sum">年底提醒</summary>' +
       '<p class="small muted" style="margin:0">每年 12/31 前最後一個工作天 10:00 自動推播；前一天會先私訊預覽給你，可以在 LINE 上取消。</p>' +
-      '<div class="btn-row"><button class="btn small ghost" id="yePreview">預覽／手動推播</button></div></div>' +
+      '<div class="btn-row"><button class="btn small ghost" id="yePreview">預覽／手動推播</button></div></details>' +
 
-      '<div class="card"><h3 style="margin-top:0">問題回報 ' + (fbOpen ? '<span class="badge warn">未處理 ' + fbOpen + '</span> ' : '') + (fbSched ? '<span class="badge gray">排程 ' + fbSched + '</span>' : '') + '</h3>' +
+      '<details class="card set-sec" data-sec="fb"><summary class="set-sum">問題回報 ' + (fbOpen ? '<span class="badge warn">未處理 ' + fbOpen + '</span> ' : '') + (fbSched ? '<span class="badge gray">排程 ' + fbSched + '</span>' : '') + '</summary>' +
       '<div class="choice" id="fbFilter">' + [['open', '未處理'], ['scheduled', '排程處理'], ['done', '已處理'], ['all', '全部']].map(function (o) {
         return '<button class="btn small ' + (FB_FILTER === o[0] ? '' : 'ghost') + '" data-fbf="' + o[0] + '">' + o[1] + '</button>';
       }).join('') + '</div><div id="fbList" style="margin-top:10px"></div>' +
-      '<p class="small muted">「排程處理」會在每月 1 日整理成清單私訊給你，再由 Claude 和你討論修改方式。</p></div>' +
+      '<p class="small muted">「排程處理」會在每月 1 日整理成清單私訊給你，再由 Claude 和你討論修改方式。</p></details>' +
 
-      '<div class="card"><h3 style="margin-top:0">我的密碼</h3>' +
+      '<details class="card set-sec" data-sec="pw"><summary class="set-sum">我的密碼</summary>' +
       '<p class="small muted" style="margin:0 0 8px">管理員帳號的新密碼 10–20 碼，需同時包含英文與數字。</p>' +
       '<div class="row2"><input class="input" id="op" type="password" placeholder="目前的密碼" autocomplete="current-password"><input class="input" id="np" type="password" placeholder="新密碼" autocomplete="new-password"></div>' +
-      '<div class="btn-row"><button class="btn ghost" id="pwBtn">修改密碼</button></div></div>' +
+      '<div class="btn-row"><button class="btn ghost" id="pwBtn">修改密碼</button></div></details>' +
 
-      '<details class="card"><summary style="cursor:pointer;font-weight:600">進階</summary>' +
+      '<details class="card set-sec" data-sec="adv"><summary class="set-sum">進階</summary>' +
       '<p class="small muted">LINE 選單平常會自動更新；只有選單不見或沒更新時才需要按。</p>' +
       '<div class="btn-row"><button class="btn small ghost" id="rmBtn">重新建立 LINE 選單</button></div>' +
       '<p class="small" style="margin-top:12px"><a href="' + esc(st.dataSheetUrl) + '" target="_blank" rel="noopener">開啟資料試算表</a>　' +
       '<a href="' + esc(st.staffSheetUrl) + '" target="_blank" rel="noopener">開啟人員主檔</a></p></details>';
 
+    $$('details[data-sec]', box).forEach(function (d) {
+      d.open = !!SET_OPEN[d.dataset.sec];
+      d.addEventListener('toggle', function () { SET_OPEN[d.dataset.sec] = d.open; });
+    });
     // 推播目標
     $$('[data-pt]', box).forEach(function (b) {
       b.onclick = async function () {
