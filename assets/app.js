@@ -268,13 +268,11 @@
   // ---------------- 參加紀錄 ----------------
   async function loadRecords() {
     var box = $('#tab-records');
-    box.innerHTML = BM.yearChips(S.year) + '<div id="lockInfo" style="margin-top:6px"></div><div id="recList"></div>';
-    $$('[data-year]').forEach(function (b) { b.onclick = function () { S.year = b.dataset.year; loadRecords(); }; });
+    box.innerHTML = BM.yearSelect(S.year, 'yearSel') + '<div id="recList"></div>';
+    $('#yearSel').onchange = function () { S.year = this.value; loadRecords(); };
     var year = S.year;
     await BM.swr('rec_' + myKey() + '_' + year, function () { return BM.api('records', { token: token(), year: year }); }, function (rec) {
       if (S.year !== year || !$('#recList')) return; // 已切換到別的年度
-      $('#lockInfo').innerHTML = (rec.updatedAt ? '<div class="small muted">上次更新：' + esc(rec.updatedAt) + '</div>' : '') +
-        (rec.locked ? '<span class="badge gray">🔒 已結算鎖定</span>' : '');
       renderRecords(rec);
     });
   }
@@ -282,8 +280,7 @@
   // 主管／管理員：全員表；職員：只有自己
   function renderRecords(rec) {
     var box = $('#recList');
-    var head = '<div class="section-title">' + rec.year + (rec.all ? ' 年全員參加紀錄' : ' 年我的參加紀錄') + '（活動結束後隔日更新）</div>' +
-      (rec.year <= '2026' ? '<div class="notice ok">' + BM.HIST_NOTE + '</div>' : '');
+    var head = BM.recordsHead(rec);
     if (rec.all) {
       box.innerHTML = head + '<div id="recTable"></div>';
       BM.recordsTable($('#recTable'), rec);
@@ -309,7 +306,7 @@
     var TYPES = [['add', '申請補登', '有去但沒報名'], ['remove', '申請移除', '有報名但沒去'], ['swap', '申請修正', '報錯場次，同時補登一場、移除一場']];
     box.innerHTML =
       '<div class="card"><h3 style="margin:0">提出申請</h3>' +
-      '<p class="muted small" style="margin:4px 0 0">管理員審核通過後才會計入。</p>' +
+      '<p class="muted small" style="margin:4px 0 0">送出後立即生效，次數會馬上更新。</p>' +
       '<label class="f" for="cEv">活動</label><select class="input" id="cEv"><option value="">請選擇活動…</option>' +
       evs.map(function (e) { return '<option value="' + e.id + '">' + esc(BM.fmtRange(e.dates) + ' ' + e.name) + '</option>'; }).join('') + '</select>' +
       '<label class="f">申請類型</label><div class="sess-grid" id="cTypes">' + TYPES.map(function (t, i) {
@@ -360,7 +357,7 @@
       if (t !== 'add') { p.rmDate = rm.split('|')[0]; p.rmSession = rm.split('|')[1]; }
       var newList = await BM.run(function () { return BM.api('submitCorrection', p); });
       BM.cache(listKey, newList);
-      BM.toast('已送出，等待管理員審核');
+      BM.toast('已送出並生效');
       loadCorrections();
     };
     // 申請紀錄：先顯示暫存，再背景更新（只更新清單，不會清掉正在填的表單）
@@ -372,7 +369,7 @@
 
   function corListHtml(list) {
     var statusBadge = function (s) {
-      return s === 'pending' ? '<span class="badge warn">待審核</span>' : s === 'approved' ? '<span class="badge">已通過</span>' : '<span class="badge bad">已退回</span>';
+      return s === 'pending' ? '<span class="badge warn">待審核</span>' : s === 'approved' ? '<span class="badge">已通過</span>' : s === 'revoked' ? '<span class="badge gray">已撤銷</span>' : '<span class="badge bad">已退回</span>';
     };
     return list.length ? list.map(function (c) {
       return '<div class="card list-item"><div class="grow"><b>' + esc(c.eventName) + '</b><div>' + esc(c.summary || '') + '</div>' +

@@ -158,7 +158,7 @@ var BM = (function () {
   }
 
   // ---- 版本與問題回報 ----
-  var VERSION = '1.8.0';
+  var VERSION = '1.8.2';
   var UPDATED = '2026/11/18';
   var HIST_NOTE = '2026/10/03 以前的紀錄由舊紀錄表匯入。原紀錄沒有區分上、下午場，半天的場次統一記為「上午場」，不影響次數統計。';
 
@@ -200,6 +200,20 @@ var BM = (function () {
     return '<div class="year-chips">' + html + '</div>';
   }
 
+  // 參加紀錄的年度下拉選單（2023～明年，預設今年）
+  function yearSelect(current, id) {
+    var y = Number(today().slice(0, 4));
+    var opts = '';
+    for (var i = y + 1; i >= 2023; i--) opts += '<option value="' + i + '"' + (String(i) === String(current) ? ' selected' : '') + '>' + i + ' 年</option>';
+    return '<select class="input" id="' + id + '" aria-label="年度" style="max-width:180px">' + opts + '</select>';
+  }
+  // 參加紀錄上方的說明：更新時間＋（匯入說明）
+  function recordsHead(rec) {
+    return '<p class="small muted" style="margin:8px 4px 0">每次活動結束後隔日更新' + (rec.updatedAt ? '，上次更新：' + esc(rec.updatedAt) : '') +
+      (rec.locked ? '　<span class="badge gray">🔒 已結算鎖定</span>' : '') + '</p>' +
+      (rec.year <= '2026' ? '<div class="notice ok">' + HIST_NOTE + '</div>' : '<div style="height:10px"></div>');
+  }
+
   // ---- 全員參加紀錄表（報名頁的主管/管理員、管理頁共用）----
   // 欄位：員工｜參加場次（日期＋活動）｜次數；點「員工」「次數」表頭排序，再點一次反向
   var recSort = { key: 'total', dir: -1 };
@@ -239,7 +253,7 @@ var BM = (function () {
 
   return {
     VERSION: VERSION, UPDATED: UPDATED, HIST_NOTE: HIST_NOTE, footer: footer, cache: cache, cached: cached, clearCache: clearCache, swr: swr,
-    recordsTable: recordsTable, yearChips: yearChips, realApi: realApi, mock: null,
+    recordsTable: recordsTable, yearChips: yearChips, yearSelect: yearSelect, recordsHead: recordsHead, realApi: realApi, mock: null,
     store: store, api: api, fmtDate: fmtDate, fmtRange: fmtRange, today: today, esc: esc, sess: sess,
     img: img, fileUrl: fileUrl, linkify: linkify, toast: toast, busy: busy, run: run, modal: modal,
     meetTimesHtml: meetTimesHtml, onAuthFail: null, onPwChange: null

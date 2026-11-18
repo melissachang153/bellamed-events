@@ -165,9 +165,9 @@
       var date = d.type === 'remove' ? d.rmDate : d.date, ses = d.type === 'remove' ? d.rmSession : d.session;
       var sum = summary(d.type, date, ses, d.rmDate, d.rmSession);
       DATA.corrections.push({ en: s.en, eventId: ev.id, eventName: ev.name, summary: sum, reason: String(d.reason || '').slice(0, 200),
-        status: 'pending', createdAt: new Date().toISOString().slice(0, 19) });
+        status: 'approved', createdAt: new Date().toISOString().slice(0, 19) }); // 正式版：未鎖定年度送出就自動通過
       var label = d.type === 'add' ? '補登' : d.type === 'remove' ? '移除' : '修正';
-      notify('correction', '📝 ' + label + '申請\n' + s.en + '\n' + ev.name + '\n' + sum + (d.reason ? '\n說明：' + d.reason : ''));
+      notify('correction', '📝 ' + label + '申請（已自動通過）\n' + s.en + '\n' + ev.name + '\n' + sum + (d.reason ? '\n說明：' + d.reason : '') + '\n\n有問題可以按「撤銷」改回原狀。');
       return myCorr(s);
     }
   };

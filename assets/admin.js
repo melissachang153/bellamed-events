@@ -80,7 +80,7 @@
         (e.status === 'published' ? '<button class="btn small ghost" data-act="draft" data-id="' + e.id + '">改回草稿</button>' : '') +
         (e.status === 'published' ? '<button class="btn small danger" data-act="cancel" data-id="' + e.id + '">取消活動</button>' : '') +
         (e.status === 'cancelled' ? '<button class="btn small ghost" data-act="publish" data-id="' + e.id + '">恢復公開</button>' : '') +
-        (e.status === 'draft' ? '<button class="btn small danger" data-act="delete" data-id="' + e.id + '">刪除</button>' : '') +
+        '<button class="btn small danger" data-act="delete" data-id="' + e.id + '">刪除</button>' +
         '</div></div>';
     };
     var box = $('#tab-events');
@@ -108,8 +108,10 @@
       BM.toast('已取消活動');
     }
     if (act === 'delete') {
-      if (!confirm('確定刪除草稿「' + e.name + '」？')) return;
+      if (!confirm('確定刪除「' + e.name + '」？\n\n刪除後活動會整個消失' + (e.regCount ? '，' + e.regCount + ' 人的報名紀錄也會一起刪除' : '') +
+        '，無法復原，也不會通知群組。\n（如果要讓大家知道活動取消，請改用「取消活動」）')) return;
       await reload(await call('deleteEvent', { id: id }));
+      BM.toast('已刪除');
     }
   }
 
@@ -379,14 +381,23 @@
         '<div><b>' + esc(c.summary || '') + '</b></div>' +
         (c.reason ? '<div class="small muted">說明：' + esc(c.reason) + '</div>' : '') +
         '<div class="small muted">' + c.createdAt.replace('T', ' ').slice(0, 16) + '</div></div>' +
-        (actions ? '' : (c.status === 'approved' ? '<span class="badge">已通過</span>' : '<span class="badge bad">已退回</span>')) + '</div>' +
+        (actions ? '' : c.status === 'approved' ? '<span class="badge">' + (c.auto ? '自動通過' : '已通過') + '</span>' :
+          c.status === 'revoked' ? '<span class="badge gray">已撤銷</span>' : '<span class="badge bad">已退回</span>') + '</div>' +
         (actions ? '<div class="btn-row"><button class="btn small" data-ok="1" data-id="' + c.id + '">通過</button><button class="btn small danger" data-ok="0" data-id="' + c.id + '">退回</button></div>' : '') +
+        (!actions && c.status === 'approved' && !c.locked ? '<div class="btn-row"><button class="btn small ghost" data-rev="' + c.id + '">↩ 撤銷</button></div>' : '') +
         '</div>';
     };
     var box = $('#tab-review');
-    box.innerHTML = '<div class="section-title">待審核（' + pend.length + '）</div>' +
-      (pend.length ? pend.map(function (c) { return item(c, true); }).join('') : '<div class="card empty">沒有待審核的申請 🎉</div>') +
-      '<div class="section-title">最近處理</div>' + (done.length ? done.map(function (c) { return item(c, false); }).join('') : '<div class="card empty">無</div>');
+    box.innerHTML = '<p class="small muted" style="margin:0 4px">未鎖定年度的申請送出就自動生效；有問題可以按「撤銷」改回原狀。</p>' +
+      (pend.length ? '<div class="section-title">待審核（' + pend.length + '）</div>' + pend.map(function (c) { return item(c, true); }).join('') : '') +
+      '<div class="section-title">最近的申請</div>' + (done.length ? done.map(function (c) { return item(c, false); }).join('') : '<div class="card empty">無</div>');
+    $$('[data-rev]', box).forEach(function (b) {
+      b.onclick = async function () {
+        if (!confirm('撤銷這筆申請？報名紀錄會改回申請前的樣子。')) return;
+        await reload(await call('revokeCorrection', { id: b.dataset.rev }));
+        BM.toast('已撤銷');
+      };
+    });
     $$('[data-ok]', box).forEach(function (b) {
       b.onclick = async function () {
         await reload(await call('reviewCorrection', { id: b.dataset.id, approve: b.dataset.ok === '1' }));
@@ -398,14 +409,13 @@
   // ======================= 參加紀錄 =======================
   async function renderRecords() {
     var box = $('#tab-records');
-    box.innerHTML = BM.yearChips(S.year) +
-      '<p class="small muted">要手動修改某人的次數：到「活動」→ 該活動的「報名名單」勾選/取消。</p><div id="rl"></div>';
-    $$('[data-year]', box).forEach(function (b) { b.onclick = function () { S.year = b.dataset.year; renderRecords(); }; });
+    box.innerHTML = BM.yearSelect(S.year, 'ry') + '<div id="rl"></div>' +
+      '<p class="small muted">要手動修改某人的次數：到「活動」→ 該活動的「報名名單」勾選/取消。</p>';
+    $('#ry').onchange = function () { S.year = this.value; renderRecords(); };
     var year = S.year;
     await BM.swr('arec_' + year, function () { return BM.api('adminRecords', { token: token(), year: year }); }, function (rec) {
       if (S.year !== year || !$('#rl')) return;
-      $('#rl').innerHTML = '<p class="small muted">活動結束後隔日計入。' + (rec.updatedAt ? '上次更新：' + esc(rec.updatedAt) : '') + '</p>' + (rec.year <= '2026' ? '<div class="notice ok">' + BM.HIST_NOTE + '</div>' : '') +
-        (rec.locked ? '<div class="notice">🔒 ' + rec.year + ' 年度已鎖定</div>' : '') + '<div id="rt"></div>';
+      $('#rl').innerHTML = BM.recordsHead(rec) + '<div id="rt"></div>';
       BM.recordsTable($('#rt'), rec);
     });
   }
