@@ -160,9 +160,8 @@ var BM = (function () {
   }
 
   // ---- 版本與問題回報 ----
-  var VERSION = '1.8.7';
+  var VERSION = '1.8.8';
   var UPDATED = '2026/11/18';
-  var HIST_NOTE = '2026/10/03 以前的紀錄由舊紀錄表匯入。原紀錄沒有區分上、下午場，半天的場次統一記為「上午場」，不影響次數統計。';
 
   function footer(pageName, whoFn) {
     var f = document.createElement('footer');
@@ -213,7 +212,7 @@ var BM = (function () {
   function recordsHead(rec) {
     return '<p class="small muted" style="margin:8px 4px 0">每次活動結束後隔日更新' + (rec.updatedAt ? '，上次更新：' + esc(rec.updatedAt) : '') +
       (rec.locked ? '　<span class="badge gray">🔒 已結算鎖定</span>' : '') + '</p>' +
-      (rec.year <= '2026' ? '<div class="notice ok">' + HIST_NOTE + '</div>' : '<div style="height:10px"></div>');
+      '<div style="height:10px"></div>';
   }
 
   // ---- 全員參加紀錄表（報名頁的主管/管理員、管理頁共用）----
@@ -254,7 +253,7 @@ var BM = (function () {
   }
 
   return {
-    VERSION: VERSION, UPDATED: UPDATED, HIST_NOTE: HIST_NOTE, footer: footer, cache: cache, cached: cached, clearCache: clearCache, swr: swr,
+    VERSION: VERSION, UPDATED: UPDATED, footer: footer, cache: cache, cached: cached, clearCache: clearCache, swr: swr,
     recordsTable: recordsTable, yearChips: yearChips, yearSelect: yearSelect, recordsHead: recordsHead, realApi: realApi, mock: null,
     store: store, api: api, fmtDate: fmtDate, fmtRange: fmtRange, today: today, esc: esc, sess: sess,
     img: img, fileUrl: fileUrl, linkify: linkify, toast: toast, busy: busy, run: run, modal: modal,
