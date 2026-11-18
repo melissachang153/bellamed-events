@@ -36,6 +36,20 @@
     if (!D) return;
     var pending = D.corrections.filter(function (c) { return c.status === 'pending'; }).length;
     $('#tabs [data-tab=review]').innerHTML = '審核' + (pending ? '<span class="badge warn">' + pending + '</span>' : '');
+    // 網頁和後端版本不一致時提醒（代表其中一邊還沒更新）
+    var vw = document.getElementById('verWarn');
+    if (!vw) {
+      vw = document.createElement('div');
+      vw.id = 'verWarn';
+      vw.className = 'notice';
+      vw.style.cssText = 'margin:12px auto 0;max-width:728px';
+      $('#appView').insertBefore(vw, $('#appView main'));
+    }
+    var bv = D.settings.backendVersion || '';
+    var older = !bv || bv.localeCompare(BM.VERSION, 'en', { numeric: true }) < 0;
+    vw.hidden = bv === BM.VERSION;
+    vw.innerHTML = '⚠️ 版本不一致：網頁 v' + esc(BM.VERSION) + '，後端 ' + (bv ? 'v' + esc(bv) : '是舊版') + '。' +
+      (older ? '請到 Apps Script 貼上最新的後端程式並部署新版本。' : '請把最新的 site 資料夾上傳到 GitHub。');
     if (S.tab === 'events') renderEvents();
     if (S.tab === 'review') renderReview();
     if (S.tab === 'records') renderRecords();
