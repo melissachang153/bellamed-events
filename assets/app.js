@@ -92,23 +92,37 @@
     };
   }
 
+  function myKey() { return S.me.admin ? 'admin' : String(S.me.name).toLowerCase(); }
+  // 依角色與「設定 → 頁面權限」決定看得到哪些分頁
+  function canSee(t) { return !!(S.me.pages && S.me.pages[t]); }
+
   function startApp(me) {
+    if (!me || !me.pages) { logout(); return; } // 舊版登入資料：請重新登入
     S.me = me;
     $('#loginView').hidden = true;
     $('#appView').hidden = false;
     $('#logoutBtn').hidden = false;
     $('#adminBtn').hidden = !me.admin;
-    $('#who').textContent = me.admin ? '管理員' : me.name.split(' ')[0];
-    $('#tabs [data-tab=corrections]').hidden = !!me.admin; // 管理員不需要修正申請
-    if (me.admin && S.tab === 'corrections') switchTab('events');
-    S.events = BM.cached('ev_' + (me.id || 'admin')) || [];
-    loadEvents().then(prefetch);
+    $('#who').textContent = me.admin ? '管理員' : me.name + (me.role === 'manager' ? '（主管）' : '');
+    ['events', 'records', 'corrections'].forEach(function (t) { $('#tabs [data-tab=' + t + ']').hidden = !canSee(t); });
+    var first = ['events', 'records', 'corrections'].filter(canSee)[0];
+    if (!first) {
+      $('#tabs').hidden = true;
+      $('#tab-events').hidden = false;
+      $('#tab-events').innerHTML = '<div class="card empty">你的帳號目前沒有可以查看的頁面，請洽管理員。</div>';
+      return;
+    }
+    $('#tabs').hidden = false;
+    S.events = BM.cached('ev_' + myKey()) || [];
+    switchTab(canSee(S.tab) ? S.tab : first);
+    if (canSee('events')) loadEvents().then(prefetch); else prefetch();
   }
 
   function switchTab(t) {
     S.tab = t;
     document.querySelectorAll('#tabs button').forEach(function (b) { b.classList.toggle('on', b.dataset.tab === t); });
     ['events', 'records', 'corrections'].forEach(function (x) { $('#tab-' + x).hidden = x !== t; });
+    if (t === 'events') renderEvents();
     if (t === 'records') loadRecords();
     if (t === 'corrections') loadCorrections();
     window.scrollTo(0, 0);
@@ -116,19 +130,21 @@
 
   // ---------------- 活動 ----------------
   async function loadEvents() {
-    await BM.swr('ev_' + (S.me.id || 'admin'), function () { return BM.api('events', { token: token() }); }, function (evs) {
+    await BM.swr('ev_' + myKey(), function () { return BM.api('events', { token: token() }); }, function (evs) {
       S.events = evs;
-      if (!document.querySelector('.modal-wrap')) renderEvents(); // 正在看活動內容時不打斷
+      if (S.tab === 'events' && !document.querySelector('.modal-wrap')) renderEvents(); // 正在看活動內容時不打斷
     });
   }
   // 登入後在背景先抓好其他分頁的資料，切換時就不用等
   function prefetch() {
     var y = BM.today().slice(0, 4);
-    BM.run(function () { return BM.api('records', { token: token(), year: y }); }, { silent: true })
-      .then(function (r) { BM.cache('rec_' + y, r); }).catch(function () { });
-    if (!S.me.admin) {
+    if (canSee('records')) {
+      BM.run(function () { return BM.api('records', { token: token(), year: y }); }, { silent: true })
+        .then(function (r) { BM.cache('rec_' + myKey() + '_' + y, r); }).catch(function () { });
+    }
+    if (canSee('corrections')) {
       BM.run(function () { return BM.api('myCorrections', { token: token() }); }, { silent: true })
-        .then(function (r) { BM.cache('cor_' + S.me.id, r); }).catch(function () { });
+        .then(function (r) { BM.cache('cor_' + myKey(), r); }).catch(function () { });
     }
   }
 
@@ -206,6 +222,8 @@
     var sess = '';
     if (S.me.admin) {
       sess = '<div class="notice ok">管理員檢視模式：可以查看員工看到的畫面，但不能報名。要修改報名請到管理頁的「報名名單」。</div>';
+    } else if (!S.me.counted) {
+      sess = '<div class="notice ok">你的帳號只需查看，不需要報名。</div>';
     } else if (!cancelled) {
       sess = '<h3 style="margin:18px 0 4px">我要報名</h3><p class="muted small" style="margin:0">上午、下午各算 0.5 次，可以只報其中一場。</p><div class="sess-grid">' +
         e.dates.map(function (d) {
@@ -240,7 +258,7 @@
         sessions.push({ date: p[0], session: p[1] });
       });
       S.events = await BM.run(function () { return BM.api('register', { token: token(), eventId: e.id, sessions: sessions }); });
-      BM.cache('ev_' + S.me.id, S.events);
+      BM.cache('ev_' + myKey(), S.events);
       BM.toast('已儲存報名');
       m.close();
       renderEvents();
@@ -250,37 +268,43 @@
   // ---------------- 參加紀錄 ----------------
   async function loadRecords() {
     var box = $('#tab-records');
-    var y = Number(BM.today().slice(0, 4));
-    var opts = '';
-    for (var i = y + 1; i >= 2023; i--) opts += '<option' + (String(i) === S.year ? ' selected' : '') + '>' + i + '</option>';
-    box.innerHTML = '<div class="row2" style="align-items:end"><div><label class="f" for="yearSel">年度</label>' +
-      '<select class="input" id="yearSel">' + opts + '</select></div><div id="lockInfo"></div></div><div id="recList"></div>';
-    $('#yearSel').onchange = function () { S.year = this.value; loadRecords(); };
+    box.innerHTML = BM.yearChips(S.year) + '<div id="lockInfo" style="margin-top:6px"></div><div id="recList"></div>';
+    $$('[data-year]').forEach(function (b) { b.onclick = function () { S.year = b.dataset.year; loadRecords(); }; });
     var year = S.year;
-    await BM.swr('rec_' + year, function () { return BM.api('records', { token: token(), year: year }); }, function (rec) {
+    await BM.swr('rec_' + myKey() + '_' + year, function () { return BM.api('records', { token: token(), year: year }); }, function (rec) {
       if (S.year !== year || !$('#recList')) return; // 已切換到別的年度
       $('#lockInfo').innerHTML = (rec.updatedAt ? '<div class="small muted">上次更新：' + esc(rec.updatedAt) + '</div>' : '') +
         (rec.locked ? '<span class="badge gray">🔒 已結算鎖定</span>' : '');
-      $('#recList').innerHTML = renderRecords(rec);
+      renderRecords(rec);
     });
   }
 
+  // 主管／管理員：全員表；職員：只有自己
   function renderRecords(rec) {
-    return '<div class="section-title">' + rec.year + ' 年每人參加場次（活動結束後隔日更新）</div>' + (rec.year <= '2026' ? '<div class="notice ok">' + BM.HIST_NOTE + '</div>' : '') + rec.people.map(function (p) {
-      return '<div class="card rec-person"><div class="rec-head"><b>' + esc(p.name) + (p.region ? ' <span class="small muted">' + esc(p.region) + '區</span>' : '') + '</b>' +
-        '<span class="rec-total">' + p.total + ' 次</span></div>' +
-        (p.items.length ? '<ul class="rec-items">' + p.items.map(function (i) {
-          return '<li><span>' + i.date.slice(5).replace('-', '/') + '</span><span>' + esc(i.name) + '</span><span class="c">' +
-            i.sessions.map(BM.sess).join('、') + '</span></li>';
-        }).join('') + '</ul>' : '<div class="small muted">尚無紀錄</div>') + '</div>';
-    }).join('');
+    var box = $('#recList');
+    var head = '<div class="section-title">' + rec.year + (rec.all ? ' 年全員參加紀錄' : ' 年我的參加紀錄') + '（活動結束後隔日更新）</div>' +
+      (rec.year <= '2026' ? '<div class="notice ok">' + BM.HIST_NOTE + '</div>' : '');
+    if (rec.all) {
+      box.innerHTML = head + '<div id="recTable"></div>';
+      BM.recordsTable($('#recTable'), rec);
+      return;
+    }
+    var p = rec.people[0];
+    if (!p) { box.innerHTML = head + '<div class="card empty">你的帳號不列入統計</div>'; return; }
+    box.innerHTML = head + '<div class="card rec-person"><div class="rec-head"><b>' + esc(p.name) + '</b>' +
+      '<span class="rec-total">' + p.total + ' 次</span></div>' +
+      (p.items.length ? '<ul class="rec-items">' + p.items.map(function (i) {
+        return '<li><span>' + i.date.slice(5).replace('-', '/') + '</span><span>' + esc(i.name) + '</span><span class="c">' +
+          i.sessions.map(BM.sess).join('、') + '</span></li>';
+      }).join('') + '</ul>' : '<div class="small muted">尚無紀錄</div>') + '</div>' +
+      (canSee('corrections') ? '<p class="small muted">紀錄有錯？請到「修正申請」提出。</p>' : '');
   }
 
   // ---------------- 修正申請 ----------------
   async function loadCorrections() {
     var box = $('#tab-corrections');
     var today = BM.today();
-    var listKey = 'cor_' + S.me.id;
+    var listKey = 'cor_' + myKey();
     var evs = S.events.filter(function (e) { return e.status !== 'cancelled' && e.dates.some(function (d) { return d <= today; }); }).slice().reverse();
     var TYPES = [['add', '申請補登', '有去但沒報名'], ['remove', '申請移除', '有報名但沒去'], ['swap', '申請修正', '報錯場次，同時補登一場、移除一場']];
     box.innerHTML =

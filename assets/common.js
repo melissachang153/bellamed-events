@@ -1,6 +1,6 @@
 /* 共用工具：API、登入狀態、格式化（未來其他系統也可共用） */
 var BM = (function () {
-  var KEY = 'bellamed.';
+  var KEY = window.BM_PREFIX || 'bellamed.'; // 測試頁用另一組前綴，不會動到正式登入
 
   function store(k, v) {
     try {
@@ -11,6 +11,10 @@ var BM = (function () {
   }
 
   async function api(action, data) {
+    if (BM.mock) return BM.mock(action, data || {}); // 測試頁：所有動作都在瀏覽器裡模擬
+    return realApi(action, data);
+  }
+  async function realApi(action, data) {
     var url = window.BELLAMED_CONFIG && window.BELLAMED_CONFIG.apiUrl;
     if (!url || url.indexOf('http') !== 0) throw new Error('尚未設定系統網址（assets/config.js）');
     var body = Object.assign({ action: action }, data || {});
@@ -154,8 +158,8 @@ var BM = (function () {
   }
 
   // ---- 版本與問題回報 ----
-  var VERSION = '1.7.1';
-  var UPDATED = '2026/11/17';
+  var VERSION = '1.8.0';
+  var UPDATED = '2026/11/18';
   var HIST_NOTE = '2026/10/03 以前的紀錄由舊紀錄表匯入。原紀錄沒有區分上、下午場，半天的場次統一記為「上午場」，不影響次數統計。';
 
   function footer(pageName, whoFn) {
@@ -183,8 +187,59 @@ var BM = (function () {
     };
   }
 
+  // 年度按鈕列（2023～明年），點一下就切換
+  function yearChips(current, opts) {
+    opts = opts || {};
+    var y = Number(today().slice(0, 4));
+    var html = '';
+    for (var i = y + (opts.noNext ? 0 : 1); i >= 2023; i--) {
+      var on = String(i) === String(current);
+      html += '<button type="button" class="btn small ' + (on ? '' : 'ghost') + '" data-year="' + i + '"' + (on ? ' aria-pressed="true"' : '') + '>' +
+        (opts.label ? opts.label(String(i)) : i) + '</button>';
+    }
+    return '<div class="year-chips">' + html + '</div>';
+  }
+
+  // ---- 全員參加紀錄表（報名頁的主管/管理員、管理頁共用）----
+  // 欄位：員工｜參加場次（日期＋活動）｜次數；點「員工」「次數」表頭排序，再點一次反向
+  var recSort = { key: 'total', dir: -1 };
+  function recordsTable(box, rec) {
+    function draw() {
+      var people = rec.people.slice().sort(function (a, b) {
+        var byName = String(a.name).localeCompare(String(b.name), 'en', { sensitivity: 'base' });
+        if (recSort.key === 'name') return byName * recSort.dir;
+        return (a.total - b.total) * recSort.dir || byName;
+      });
+      var th = function (key, label) {
+        var on = recSort.key === key;
+        var arrow = on ? (recSort.dir > 0 ? ' ▲' : ' ▼') : ' <span class="sort-hint">▲▼</span>';
+        return '<th class="sortable' + (on ? ' on' : '') + '" data-sort="' + key + '" role="button" tabindex="0" aria-sort="' +
+          (on ? (recSort.dir > 0 ? 'ascending' : 'descending') : 'none') + '">' + label + arrow + '</th>';
+      };
+      box.innerHTML = '<div class="scroll-x card" style="padding:0"><table class="grid rec-table"><thead><tr>' +
+        th('name', '員工') + '<th>參加場次</th>' + th('total', '次數') + '</tr></thead><tbody>' +
+        (people.length ? people.map(function (p) {
+          return '<tr><td style="white-space:nowrap"><b>' + esc(p.name) + '</b></td><td>' +
+            (p.items.map(function (i) { return '<div>' + esc(i.date.slice(5).replace('-', '/') + ' ' + i.name) + '</div>'; }).join('') || '<span class="muted">—</span>') +
+            '</td><td class="num"><b>' + p.total + '</b></td></tr>';
+        }).join('') : '<tr><td colspan="3" class="muted">尚無資料</td></tr>') + '</tbody></table></div>';
+      box.querySelectorAll('[data-sort]').forEach(function (h) {
+        var go = function () {
+          var k = h.dataset.sort;
+          if (recSort.key === k) recSort.dir = -recSort.dir;
+          else recSort = { key: k, dir: k === 'name' ? 1 : -1 };
+          draw();
+        };
+        h.onclick = go;
+        h.onkeydown = function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } };
+      });
+    }
+    draw();
+  }
+
   return {
     VERSION: VERSION, UPDATED: UPDATED, HIST_NOTE: HIST_NOTE, footer: footer, cache: cache, cached: cached, clearCache: clearCache, swr: swr,
+    recordsTable: recordsTable, yearChips: yearChips, realApi: realApi, mock: null,
     store: store, api: api, fmtDate: fmtDate, fmtRange: fmtRange, today: today, esc: esc, sess: sess,
     img: img, fileUrl: fileUrl, linkify: linkify, toast: toast, busy: busy, run: run, modal: modal,
     meetTimesHtml: meetTimesHtml, onAuthFail: null, onPwChange: null

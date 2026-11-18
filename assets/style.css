@@ -154,6 +154,35 @@ table.grid { width: 100%; border-collapse: collapse; font-size: 14px; }
 table.grid th, table.grid td { border-bottom: 1px solid var(--line); padding: 8px 6px; text-align: left; vertical-align: top; }
 table.grid th { color: var(--muted); font-weight: 600; background: #fafbfa; position: sticky; top: 0; }
 .scroll-x { overflow-x: auto; }
+/* 可排序表頭 */
+th.sortable { cursor: pointer; user-select: none; white-space: nowrap; }
+th.sortable:hover, th.sortable.on { color: var(--brand); }
+.sort-hint { opacity: .35; font-size: 11px; }
+.rec-table td.num, .rec-table th:last-child { text-align: right; white-space: nowrap; }
+.rec-table td div + div { margin-top: 2px; }
+
+/* 一排按鈕選項（取代下拉選單） */
+.choice { display: flex; flex-wrap: wrap; gap: 8px; }
+.choice .chk { border-radius: 10px; }
+.perm-table td, .perm-table th { text-align: center; }
+.perm-table td:first-child, .perm-table th:first-child { text-align: left; }
+.year-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.year-chips .btn { min-width: 92px; }
+.fb-item .grow { white-space: pre-wrap; word-break: break-word; }
+
+/* ===== 測試頁：橘色主題 ===== */
+body.test-mode {
+  --brand: #c2570c; --brand-2: #fff1e6; --ok: #c2570c;
+}
+body.test-mode .topbar { background: #c2570c; }
+.test-banner {
+  position: sticky; top: 0; z-index: 20; background: #ea7a1a; color: #fff; text-align: center;
+  padding: 6px 12px; font-size: 14px; font-weight: 600; display: flex; gap: 10px; justify-content: center; align-items: center; flex-wrap: wrap;
+}
+.test-banner button { background: rgba(255,255,255,.2); border: 1px solid rgba(255,255,255,.6); color: #fff; border-radius: 8px; padding: 3px 10px; font-size: 13px; cursor: pointer; }
+body.test-mode .topbar { top: 34px; }
+body.test-mode .tabs { top: 84px; }
+body.test-mode #quietBar { background: #ffc58f; }
 
 .preview {
   white-space: pre-wrap; background: #f2f6f4; border-radius: 12px; padding: 12px; font-size: 15px;

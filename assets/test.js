@@ -1,0 +1,182 @@
+/* 測試頁：攔截所有 API，改在瀏覽器裡模擬。
+ * 起點是正式資料（活動、報名、修正申請、參加紀錄），之後的操作只存在這個分頁，重新整理就回到真實狀態。
+ * 唯一會連到後端的寫入動作是「（測試）」LINE 通知，不會改到任何資料。 */
+(function () {
+  var ADMIN = window.TEST_ADMIN_TOKEN;
+  var $ = function (s) { return document.querySelector(s); };
+  var PW = 'test';
+
+  $('#testReset').onclick = function () { location.reload(); };
+  $('#testBack').onclick = function () { location.href = 'admin.html'; };
+  if ($('#simFirst')) $('#simFirst').onchange = function () { this.parentElement.classList.toggle('on', this.checked); };
+
+  if (!ADMIN) {
+    document.addEventListener('DOMContentLoaded', function () {
+      $('#loginView').innerHTML = '<main><div class="card login"><h2>需要管理員登入</h2>' +
+        '<p>測試頁只有管理員能使用。請先用管理員帳號登入，再從管理頁按「測試頁」。</p>' +
+        '<div class="btn-row"><a class="btn block" href="index.html">前往登入</a></div></div></main>';
+    });
+    BM.mock = function () { return Promise.reject(new Error('請先用管理員帳號登入')); };
+    return;
+  }
+
+  // ---------- 讀取正式資料（只讀） ----------
+  var DATA = null, REC = {};
+  var ready = BM.realApi('testData', { token: ADMIN }).then(function (d) { DATA = d; }).catch(function (e) {
+    var err = new Error(e.auth ? '管理員登入已失效，請回管理頁重新登入' : '讀取正式資料失敗：' + e.message);
+    throw err;
+  });
+
+  function fail(msg) { return Promise.reject(new Error(msg)); }
+  function authFail() { var e = new Error('登入已失效，請重新登入'); e.auth = true; return Promise.reject(e); }
+  function wait() { return new Promise(function (r) { setTimeout(r, 150); }); }
+  function today() { return BM.today(); }
+  function sess(s) { return s === 'AM' ? '上午' : '下午'; }
+
+  function staffByEn(en) {
+    en = String(en || '').trim().toLowerCase();
+    return DATA.staff.filter(function (s) { return s.en.toLowerCase() === en; })[0];
+  }
+  function canSee(s, page) {
+    var p = DATA.perms[s.role === 'manager' ? 'manager' : 'staff'];
+    if (!p[page]) return false;
+    if (page === 'corrections') return s.counted;
+    return true;
+  }
+  function meView(s) {
+    var pages = {};
+    ['events', 'records', 'corrections'].forEach(function (k) { pages[k] = canSee(s, k); });
+    return { name: s.en, region: s.region, admin: false, role: s.role, counted: s.counted, pages: pages };
+  }
+  function userFrom(token) {
+    var m = String(token || '').match(/^t:(.+)$/);
+    return m ? staffByEn(m[1]) : null;
+  }
+  // 「（測試）」LINE 通知：送不出去也不影響測試流程
+  function notify(kind, text) {
+    BM.realApi('testNotify', { token: ADMIN, kind: kind, text: text })
+      .then(function () { BM.toast('（測試）已通知管理員 LINE'); })
+      .catch(function (e) { BM.toast('（測試）LINE 通知沒送出：' + e.message, true); });
+  }
+
+  function eventsFor(s) {
+    return DATA.events.map(function (e) {
+      var v = JSON.parse(JSON.stringify(e));
+      v.mine = e.registrants.filter(function (r) { return r.en === s.en; }).map(function (r) { return r.date + '|' + r.session; });
+      v.registrants = e.registrants.map(function (r) { return { name: r.en, date: r.date, session: r.session }; });
+      var set = {};
+      e.registrants.forEach(function (r) { set[r.en] = true; });
+      v.peopleCount = Object.keys(set).length;
+      return v;
+    });
+  }
+  function summary(type, d, s, rd, rs) {
+    var f = function (dd, ss) { return dd.slice(5).replace('-', '/') + ' ' + sess(ss); };
+    if (type === 'add') return '補登 ' + f(d, s);
+    if (type === 'remove') return '移除 ' + f(d, s);
+    return '修正：補登 ' + f(d, s) + '，移除 ' + f(rd, rs);
+  }
+  function myCorr(s) {
+    return DATA.corrections.filter(function (c) { return c.en === s.en; }).map(function (c) {
+      return { eventName: c.eventName, summary: c.summary, reason: c.reason, status: c.status, createdAt: c.createdAt };
+    }).sort(function (a, b) { return b.createdAt.localeCompare(a.createdAt); });
+  }
+
+  var H = {
+    login: function (d) {
+      var s = staffByEn(d.account);
+      if (!s || d.password !== PW) return fail('帳號或密碼錯誤（測試頁的密碼一律是 test；帳號是員工英文名）');
+      if ($('#simFirst') && $('#simFirst').checked) return { role: 'pwchange', token: 'pw:' + s.en, staff: meView(s) };
+      return { role: 'staff', token: 't:' + s.en, staff: meView(s) };
+    },
+    changeMyPassword: function (d) {
+      var m = String(d.token || '').match(/^pw:(.+)$/);
+      var s = m && staffByEn(m[1]);
+      if (!s) return authFail();
+      var pw = String(d.newPassword || '');
+      if (!/^[A-Za-z0-9!@#$%^&*._-]{6,20}$/.test(pw)) return fail('密碼需為 6–20 碼的英文或數字');
+      if (/^(.)\1+$/.test(pw) || '0123456789012345678909876543210'.indexOf(pw) >= 0) return fail('密碼太簡單，請換一組');
+      if ($('#simFirst')) { $('#simFirst').checked = false; $('#simFirst').parentElement.classList.remove('on'); }
+      return { role: 'staff', token: 't:' + s.en, staff: meView(s) };
+    },
+    forgotPassword: function (d) {
+      var s = staffByEn(d.account);
+      if (s) notify('forgot', '🔑 忘記密碼申請\n' + s.en + ' 申請重設密碼。\n請先確認是本人，再決定是否恢復為生日末 4 碼。');
+      return { message: '已送出，請等待 1–2 日內管理員通知。' };
+    },
+    reportIssue: function (d) {
+      var msg = String(d.message || '').trim();
+      if (!msg) return fail('請描述遇到的問題');
+      notify('report', '🐞 問題回報\n回報人：' + (d.who || '未登入') + '\n頁面：測試頁\n\n' + msg);
+      return { ok: true };
+    },
+    me: function (d) { var s = userFrom(d.token); return s ? meView(s) : authFail(); },
+    events: function (d) {
+      var s = userFrom(d.token);
+      if (!s) return authFail();
+      if (!canSee(s, 'events')) return fail('你的帳號沒有這個頁面的權限');
+      return eventsFor(s);
+    },
+    register: function (d) {
+      var s = userFrom(d.token);
+      if (!s) return authFail();
+      if (!s.counted) return fail('你的帳號只需查看，不需要報名');
+      var ev = DATA.events.filter(function (e) { return e.id === d.eventId; })[0];
+      if (!ev || ev.status !== 'published') return fail('活動不存在或尚未開放');
+      var t = today();
+      var want = {};
+      (d.sessions || []).forEach(function (x) { want[x.date + '|' + x.session] = true; });
+      // 保留過去的場次，未來的場次依勾選重設
+      ev.registrants = ev.registrants.filter(function (r) { return r.en !== s.en || r.date < t; });
+      Object.keys(want).forEach(function (k) {
+        var p = k.split('|');
+        if (p[0] < t) return;
+        if (ev.dates.indexOf(p[0]) >= 0) ev.registrants.push({ en: s.en, date: p[0], session: p[1] });
+      });
+      return eventsFor(s);
+    },
+    records: function (d) {
+      var s = userFrom(d.token);
+      if (!s) return authFail();
+      if (!canSee(s, 'records')) return fail('你的帳號沒有這個頁面的權限');
+      var y = String(d.year);
+      var get = REC[y] || (REC[y] = BM.realApi('adminRecords', { token: ADMIN, year: y }));
+      return get.then(function (rec) {
+        var all = s.role === 'manager';
+        return { year: rec.year, updatedAt: rec.updatedAt, locked: rec.locked, all: all,
+                 people: all ? rec.people : rec.people.filter(function (p) { return p.name === s.en; }) };
+      });
+    },
+    myCorrections: function (d) {
+      var s = userFrom(d.token);
+      if (!s) return authFail();
+      if (!canSee(s, 'corrections')) return fail('你的帳號沒有這個頁面的權限');
+      return myCorr(s);
+    },
+    submitCorrection: function (d) {
+      var s = userFrom(d.token);
+      if (!s) return authFail();
+      if (!canSee(s, 'corrections')) return fail('你的帳號沒有這個頁面的權限');
+      var ev = DATA.events.filter(function (e) { return e.id === d.eventId; })[0];
+      if (!ev) return fail('活動不存在');
+      if (['add', 'remove', 'swap'].indexOf(d.type) < 0) return fail('請選擇申請類型');
+      var dup = DATA.corrections.some(function (c) { return c.status === 'pending' && c.en === s.en && c.eventId === ev.id; });
+      if (dup) return fail('這個活動已有一筆待審核的申請，請等審核完成');
+      var date = d.type === 'remove' ? d.rmDate : d.date, ses = d.type === 'remove' ? d.rmSession : d.session;
+      var sum = summary(d.type, date, ses, d.rmDate, d.rmSession);
+      DATA.corrections.push({ en: s.en, eventId: ev.id, eventName: ev.name, summary: sum, reason: String(d.reason || '').slice(0, 200),
+        status: 'pending', createdAt: new Date().toISOString().slice(0, 19) });
+      var label = d.type === 'add' ? '補登' : d.type === 'remove' ? '移除' : '修正';
+      notify('correction', '📝 ' + label + '申請\n' + s.en + '\n' + ev.name + '\n' + sum + (d.reason ? '\n說明：' + d.reason : ''));
+      return myCorr(s);
+    }
+  };
+
+  BM.mock = function (action, d) {
+    return ready.then(wait).then(function () {
+      var fn = H[action];
+      if (!fn) throw new Error('測試頁不支援這個動作');
+      return fn(d);
+    });
+  };
+})();

@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#c2570c">
+  <meta name="robots" content="noindex, nofollow">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://drive.google.com https://*.googleusercontent.com; connect-src https://script.google.com https://script.googleusercontent.com; base-uri 'none'; form-action 'none'">
+  <meta name="referrer" content="strict-origin-when-cross-origin">
+  <title>醫學會活動報名・測試區</title>
+  <link rel="stylesheet" href="assets/style.css">
+</head>
+<body class="test-mode">
+  <div class="test-banner" id="testBanner">
+    <span>🧪 測試區・所有操作都不會保存</span>
+    <button type="button" id="testReset">重設測試資料</button>
+    <button type="button" id="testBack">回管理頁</button>
+  </div>
+  <header class="topbar">
+    <h1>醫學會活動報名（測試）</h1>
+    <span class="who" id="who"></span>
+    <button id="adminBtn" hidden>管理頁</button>
+    <button id="logoutBtn" hidden>登出</button>
+  </header>
+
+  <section id="loginView" hidden>
+    <main>
+      <div class="card login">
+        <h2>登入</h2>
+        <p class="small muted" style="margin:0">帳號：任何一位員工的英文名<br>密碼：一律輸入 <b>test</b></p>
+        <label class="f" for="loginAcct">帳號</label>
+        <input class="input" id="loginAcct" type="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
+        <label class="f" for="loginPw">密碼</label>
+        <input class="input" id="loginPw" type="password" autocomplete="off" maxlength="20">
+        <label class="chk" style="margin-top:12px"><input type="checkbox" id="simFirst">模擬首次登入（需設定新密碼）</label>
+        <div class="btn-row"><button class="btn block" id="loginBtn">登入</button></div>
+        <div class="center"><button type="button" class="link-btn" id="forgotBtn">忘記密碼？</button></div>
+      </div>
+    </main>
+  </section>
+
+  <section id="pwView" hidden>
+    <main>
+      <div class="card login">
+        <h2>設定新密碼</h2>
+        <p class="muted small" id="pwHello"></p>
+        <p class="small">為了帳號安全，第一次登入（或密碼被重設後）需要設定新密碼：</p>
+        <ul class="small muted" id="pwRules"></ul>
+        <label class="f" for="newPw">新密碼</label>
+        <input class="input" id="newPw" type="password" autocomplete="off" maxlength="20">
+        <label class="f" for="newPw2">再輸入一次</label>
+        <input class="input" id="newPw2" type="password" autocomplete="off" maxlength="20">
+        <div class="btn-row"><button class="btn block" id="newPwBtn">確定</button></div>
+        <div class="center"><button type="button" class="link-btn" id="pwCancel">取消，回到登入</button></div>
+      </div>
+    </main>
+  </section>
+
+  <section id="appView" hidden>
+    <nav class="tabs" id="tabs">
+      <button data-tab="events" class="on">活動報名</button>
+      <button data-tab="records">參加紀錄</button>
+      <button data-tab="corrections">修正申請</button>
+    </nav>
+    <main>
+      <div id="tab-events"></div>
+      <div id="tab-records" hidden></div>
+      <div id="tab-corrections" hidden></div>
+    </main>
+  </section>
+
+  <div id="busy" hidden></div>
+  <script src="assets/config.js"></script>
+  <script src="assets/test-boot.js"></script>
+  <script src="assets/common.js"></script>
+  <script src="assets/test.js"></script>
+  <script src="assets/app.js"></script>
+</body>
+</html>

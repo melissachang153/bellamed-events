@@ -29,8 +29,8 @@
   }
   // 有暫存就先顯示，再背景更新；操作後直接用伺服器回傳的最新資料
   async function reload(data) {
-    if (data) { D = data; BM.cache('adminData', D); render(); return; }
-    await BM.swr('adminData', function () { return BM.api('adminData', { token: token() }); }, function (d) { D = d; render(); });
+    if (data) { D = data; BM.cache('adminData2', D); render(); return; }
+    await BM.swr('adminData2', function () { return BM.api('adminData', { token: token() }); }, function (d) { D = d; render(); });
   }
   function render() {
     if (!D) return;
@@ -280,7 +280,7 @@
 
   async function openRegs(e) {
     var regs = await call('eventRegs', { eventId: e.id });
-    var active = D.staff.filter(function (s) { return s.active && !s.admin; });
+    var active = D.staff.filter(function (s) { return s.active && s.counted; }); // 只列「列入統計」的人
     var locked = D.settings.lockedYears;
     function has(sid, d, s) { return regs.some(function (r) { return r.staffId === sid && r.date === d && r.session === s; }); }
     function draw() {
@@ -293,7 +293,7 @@
         e.dates.map(function (d) { return '<th colspan="2">' + BM.fmtDate(d, false) + '</th>'; }).join('') + '<th>次數</th></tr><tr><th></th>' +
         e.dates.map(function () { return '<th>上</th><th>下</th>'; }).join('') + '<th></th></tr></thead><tbody>' +
         active.map(function (s) {
-          return '<tr><td style="white-space:nowrap">' + esc(s.name) + ' <span class="small muted">' + s.region + '</span></td>' +
+          return '<tr><td style="white-space:nowrap">' + esc(s.enName || s.name) + '</td>' +
             e.dates.map(function (d) {
               return ['AM', 'PM'].map(function (x) {
                 return '<td><input type="checkbox" style="width:20px;height:20px;accent-color:#1f6f50" data-s="' + s.id + '" data-d="' + d + '" data-x="' + x + '"' + (has(s.id, d, x) ? ' checked' : '') + '></td>';
@@ -330,7 +330,6 @@
       p.items.forEach(function (e) {
         lines.push((stars.indexOf(e.id) >= 0 ? '★' : '') + BM.fmtRange(e.dates) + ' ' + e.name + (e.host ? '（' + e.host + '主辦）' : '') + (e.status === 'cancelled' ? '〔已取消〕' : ''));
       });
-      lines.push('報名：' + D.settings.siteUrl);
       return lines.join('\n');
     }
     var m = BM.modal('<h2>推播活動更新</h2>' +
@@ -399,23 +398,15 @@
   // ======================= 參加紀錄 =======================
   async function renderRecords() {
     var box = $('#tab-records');
-    var y = Number(BM.today().slice(0, 4));
-    var opts = '';
-    for (var i = y + 1; i >= 2023; i--) opts += '<option' + (String(i) === S.year ? ' selected' : '') + '>' + i + '</option>';
-    box.innerHTML = '<label class="f">年度</label><select class="input" id="ry">' + opts + '</select>' +
+    box.innerHTML = BM.yearChips(S.year) +
       '<p class="small muted">要手動修改某人的次數：到「活動」→ 該活動的「報名名單」勾選/取消。</p><div id="rl"></div>';
-    $('#ry').onchange = function () { S.year = this.value; renderRecords(); };
+    $$('[data-year]', box).forEach(function (b) { b.onclick = function () { S.year = b.dataset.year; renderRecords(); }; });
     var year = S.year;
-    await BM.swr('rec_' + year, function () { return BM.api('adminRecords', { token: token(), year: year }); }, function (rec) {
+    await BM.swr('arec_' + year, function () { return BM.api('adminRecords', { token: token(), year: year }); }, function (rec) {
       if (S.year !== year || !$('#rl')) return;
       $('#rl').innerHTML = '<p class="small muted">活動結束後隔日計入。' + (rec.updatedAt ? '上次更新：' + esc(rec.updatedAt) : '') + '</p>' + (rec.year <= '2026' ? '<div class="notice ok">' + BM.HIST_NOTE + '</div>' : '') +
-        (rec.locked ? '<div class="notice">🔒 ' + rec.year + ' 年度已鎖定</div>' : '') +
-        '<div class="scroll-x card" style="padding:0"><table class="grid"><thead><tr><th>員工</th><th>參加場次</th><th>次數</th></tr></thead><tbody>' +
-        rec.people.map(function (p) {
-          return '<tr><td style="white-space:nowrap">' + esc(p.id + ' ' + p.name) + '</td><td>' +
-            (p.items.map(function (i) { return esc(i.date.slice(5).replace('-', '/') + ' ' + i.name) + ' <span class="muted">(' + i.sessions.map(BM.sess).join('、') + ')</span>'; }).join('<br>') || '<span class="muted">—</span>') +
-            '</td><td><b>' + p.total + '</b></td></tr>';
-        }).join('') + '</tbody></table></div>';
+        (rec.locked ? '<div class="notice">🔒 ' + rec.year + ' 年度已鎖定</div>' : '') + '<div id="rt"></div>';
+      BM.recordsTable($('#rt'), rec);
     });
   }
 
@@ -424,10 +415,11 @@
     var box = $('#tab-staff');
     box.innerHTML = '<div class="btn-row" style="margin-top:0"><button class="btn" id="addStaff">＋ 新增員工</button>' +
       '<a class="btn ghost" href="' + esc(D.settings.staffSheetUrl) + '" target="_blank" rel="noopener">開啟人員主檔</a></div>' +
-      '<div class="card scroll-x" style="padding:0;margin-top:12px"><table class="grid"><thead><tr><th>員編</th><th>姓名</th><th>地區</th><th>狀態</th><th></th></tr></thead><tbody>' +
+      '<div class="card scroll-x" style="padding:0;margin-top:12px"><table class="grid"><thead><tr><th>姓名</th><th>地區</th><th>角色</th><th>狀態</th><th></th></tr></thead><tbody>' +
       D.staff.map(function (s) {
-        return '<tr><td>' + esc(s.id) + '</td><td>' + esc([s.name, s.enName].filter(Boolean).join(' ')) + '</td><td>' + esc(s.region || '—') + '</td><td>' +
-          (s.admin ? '<span class="badge">管理員</span> ' : '') +
+        return '<tr><td>' + esc([s.name, s.enName].filter(Boolean).join(' ')) + '</td><td>' + esc(s.region || '—') + '</td><td style="white-space:nowrap">' +
+          (s.admin ? '管理員' : s.role === 'manager' ? '主管' : '職員') +
+          (!s.admin && !s.counted ? '<div class="small muted">不列入統計</div>' : '') + '</td><td>' +
           (/^A\d{3}$/.test(s.id) ? '<span class="badge gray">非正式</span> ' : '') +
           (s.active ? '<span class="badge">在職</span>' : '<span class="badge gray">停用</span>') +
           (s.active && s.mustChange ? ' <span class="badge warn">尚未設定密碼</span>' : '') +
@@ -441,14 +433,21 @@
   }
   function staffEditor(s) {
     var isNew = !s;
-    s = s || { id: '', name: '', enName: '', region: '北', dept: '業務', birthday: '', active: true, note: '' };
+    s = s || { id: '', name: '', enName: '', region: '北', dept: '業務', birthday: '', active: true, note: '', role: 'staff', counted: true };
     var isTemp = /^A\d{3}$/.test(s.id);
     var pwLabel = function (t) { return t ? '預設密碼（4 碼數字）' : '生日（MMDD，作為預設密碼）'; };
+    var radios = function (name, opts, cur) {
+      return '<div class="choice">' + opts.map(function (o) {
+        var on = o[0] === cur;
+        return '<label class="chk' + (on ? ' on' : '') + '"><input type="radio" name="' + name + '" value="' + o[0] + '"' + (on ? ' checked' : '') + '>' + o[1] + '</label>';
+      }).join('') + '</div>';
+    };
     var m = BM.modal('<h2>' + (isNew ? '新增員工' : '編輯員工') + (isTemp ? ' <span class="badge gray">非正式</span>' : '') + '</h2>' +
-      (isNew ? '<label class="chk" style="margin-bottom:4px"><input type="checkbox" id="sTemp">非正式員工（員編自動編為 A 開頭三碼流水號）</label>' : '') +
-      '<div class="row2"><div><label class="f">員編</label><input class="input" id="sId" value="' + esc(s.id) + '"' + (isNew ? '' : ' disabled') + '></div>' +
-      '<div><label class="f">地區</label><select class="input" id="sReg">' + (s.region ? '' : '<option value="">請選擇…</option>') +
-        REG.map(function (r) { return '<option' + (s.region === r ? ' selected' : '') + '>' + r + '</option>'; }).join('') + '</select></div></div>' +
+      (isNew ? '<label class="chk" style="margin-bottom:4px"><input type="checkbox" id="sTemp">非正式員工（員編自動編為 A 開頭三碼流水號）</label>' +
+        '<label class="f">員編</label><input class="input" id="sId" inputmode="numeric" value="">' : '') +
+      '<label class="f">地區</label>' + radios('sReg', REG.map(function (r) { return [r, r + '區']; }), s.region) +
+      (s.admin ? '' : '<label class="f">角色</label>' + radios('sRole', [['staff', '職員'], ['manager', '主管']], s.role === 'manager' ? 'manager' : 'staff') +
+        '<label class="chk' + (s.counted ? ' on' : '') + '" style="margin-top:10px"><input type="checkbox" id="sCounted"' + (s.counted ? ' checked' : '') + '>列入統計（可以報名，會出現在報名名單與參加紀錄）</label>') +
       '<div class="row2"><div><label class="f">中文名' + (isTemp ? '（選填）' : '') + '</label><input class="input" id="sName" value="' + esc(s.name) + '"></div>' +
       '<div><label class="f">英文名（登入帳號）</label><input class="input" id="sEn" autocapitalize="off" value="' + esc(s.enName) + '"></div></div>' +
       '<div class="row2"><div><label class="f">部門</label><input class="input" id="sDept" value="' + esc(s.dept) + '"></div>' +
@@ -463,6 +462,18 @@
         '<div class="btn-row"><button class="btn ghost" id="sReset">恢復預設密碼（並解鎖）</button>' +
         '<input class="input" id="sPw" placeholder="或直接指定新密碼（6–20 碼英數）" style="flex:1;min-width:160px"><button class="btn ghost" id="sSetPw">設定</button></div>'));
     var r = m.el;
+    // 按鈕式選項：點了就亮起來
+    $$('input[type=radio]', r).forEach(function (x) {
+      x.onchange = function () {
+        $$('input[name="' + x.name + '"]', r).forEach(function (y) { y.parentElement.classList.toggle('on', y.checked); });
+        if (x.name === 'sRole' && $('#sCounted', r)) { // 換角色時帶入預設：職員列入、主管不列入
+          $('#sCounted', r).checked = x.value === 'staff';
+          $('#sCounted', r).parentElement.classList.toggle('on', x.value === 'staff');
+        }
+      };
+    });
+    if ($('#sCounted', r)) $('#sCounted', r).onchange = function () { this.parentElement.classList.toggle('on', this.checked); };
+    var picked = function (name) { var x = $('input[name="' + name + '"]:checked', r); return x ? x.value : ''; };
     var tempBox = $('#sTemp', r);
     if (tempBox) tempBox.onchange = function () {
       tempBox.parentElement.classList.toggle('on', tempBox.checked);
@@ -474,9 +485,10 @@
     };
     $('#sSave', r).onclick = async function () {
       var temp = !!(tempBox && tempBox.checked);
-      var st = { id: temp ? '' : $('#sId', r).value.trim(), temp: temp, name: $('#sName', r).value.trim(), enName: $('#sEn', r).value.trim(), region: $('#sReg', r).value,
+      var st = { id: isNew ? (temp ? '' : $('#sId', r).value.trim()) : s.id, temp: temp, name: $('#sName', r).value.trim(), enName: $('#sEn', r).value.trim(), region: picked('sReg'),
         dept: $('#sDept', r).value.trim(), birthday: $('#sBday', r).value.trim(), note: $('#sNote', r).value.trim(),
         active: isNew || s.admin ? true : $('#sActive', r).checked };
+      if (!s.admin) { st.role = picked('sRole'); st.counted = $('#sCounted', r).checked; }
       if (!st.region) return BM.toast('請選擇地區', true);
       D = await call('saveStaff', { staff: st });
       BM.toast('已儲存');
@@ -485,7 +497,7 @@
     };
     if (!isNew && !s.admin) {
       $('#sReset', r).onclick = async function () {
-        if (!confirm('把 ' + (s.name || s.enName) + ' 的密碼恢復為預設密碼 ' + s.birthday + '？\n對方下次登入需重新設定新密碼。')) return;
+        if (!confirm('把 ' + (s.enName || s.name) + ' 的密碼恢復為預設密碼 ' + s.birthday + '？\n對方下次登入需重新設定新密碼。')) return;
         await call('setStaffPassword', { id: s.id, reset: true });
         BM.toast('已恢復並解鎖，對方需重新登入');
         reload();
@@ -501,70 +513,173 @@
   }
 
   // ======================= 設定 =======================
+  // 原則：能點就不用選、能選就不用打字；點了就直接儲存
+  var FB_FILTER = 'open';
   function renderSettings() {
     var st = D.settings;
     var box = $('#tab-settings');
     var y = Number(BM.today().slice(0, 4));
+    var target = st.pushTarget === 'main' ? 'main' : 'test';
+    var PAGES = [['events', '活動報名', ''], ['records', '參加紀錄', '主管看全員、職員只看自己'], ['corrections', '修正申請', '只有列入統計的人看得到']];
+    var fbOpen = D.feedback.filter(function (f) { return f.status === 'new'; }).length;
+    var fbSched = D.feedback.filter(function (f) { return f.status === 'scheduled'; }).length;
+
     box.innerHTML =
       '<div class="card"><h3 style="margin-top:0">LINE 推播</h3>' +
-      '<div class="small">' + (st.lineTokenSet ? '✅ 已設定 LINE Token' : '❌ 尚未設定 LINE Token') + '　' + (st.adminBound ? '✅ 已綁定管理員 LINE' : '❌ 尚未綁定（在 LINE 私訊官方帳號「綁定 你的登入密碼」）') + '</div>' +
-      '<label class="f">推播目標</label><div class="btn-row" style="margin-top:0">' +
-      '<label class="chk' + (st.pushTarget !== 'main' ? ' on' : '') + '"><input type="radio" name="pt" value="test"' + (st.pushTarget !== 'main' ? ' checked' : '') + '>測試群組</label>' +
-      '<label class="chk' + (st.pushTarget === 'main' ? ' on' : '') + '"><input type="radio" name="pt" value="main"' + (st.pushTarget === 'main' ? ' checked' : '') + '>正式群組</label></div>' +
-      '<label class="f">測試群組 ID</label><input class="input" id="tg" value="' + esc(st.testGroupId) + '" placeholder="C 開頭的一串代碼">' +
-      '<label class="f">正式群組 ID</label><input class="input" id="mg" value="' + esc(st.mainGroupId) + '" placeholder="C 開頭的一串代碼">' +
-      '<p class="small muted">取得群組 ID：綁定後，在群組裡輸入「設為測試群組」或「設為正式群組」即可自動填入。</p>' +
-      '<label class="f">年度紀錄備份試算表（網址）</label><input class="input" id="bk" value="' + esc(st.backupSpreadsheetId ? 'https://docs.google.com/spreadsheets/d/' + st.backupSpreadsheetId : '') + '" placeholder="貼上你現有的紀錄試算表網址">' +
-      '<div class="btn-row"><button class="btn" id="saveSet">儲存設定</button></div></div>' +
+      '<div class="small">' + (st.lineTokenSet ? '✅ LINE Token' : '❌ 尚未設定 LINE Token') + '　' + (st.adminBound ? '✅ 已綁定管理員 LINE' : '❌ 尚未綁定（在 LINE 私訊官方帳號「綁定 你的登入密碼」）') + '</div>' +
+      '<label class="f">推播目標（點一下就切換）</label><div class="btn-row" style="margin-top:0">' +
+      '<button class="btn ' + (target === 'test' ? '' : 'ghost') + '" data-pt="test">' + (target === 'test' ? '✓ ' : '') + '測試群組</button>' +
+      '<button class="btn ' + (target === 'main' ? '' : 'ghost') + '" data-pt="main">' + (target === 'main' ? '✓ ' : '') + '正式群組</button></div>' +
+      '<div class="small" style="margin-top:8px">測試群組 ' + (st.testGroupId ? '✅ 已設定' : '❌ 未設定') + '　正式群組 ' + (st.mainGroupId ? '✅ 已設定' : '❌ 未設定') + '</div>' +
+      '<details style="margin-top:6px"><summary class="small muted" style="cursor:pointer">變更群組 ID</summary>' +
+      '<label class="f">測試群組 ID</label><input class="input" id="tg" value="' + esc(st.testGroupId) + '">' +
+      '<label class="f">正式群組 ID</label><input class="input" id="mg" value="' + esc(st.mainGroupId) + '">' +
+      '<p class="small muted">也可以在群組裡輸入「設為測試群組」或「設為正式群組」自動設定。</p>' +
+      '<div class="btn-row"><button class="btn small ghost" id="saveGroups">儲存群組 ID</button></div></details>' +
+      (st.richMenuErr ? '<div class="notice">LINE 選單尚未更新：' + esc(st.richMenuErr) + '<br>上傳最新網頁後，到最下面「進階」按「重新建立 LINE 選單」。</div>' : '') +
+      '</div>' +
 
-      '<div class="card"><h3 style="margin-top:0">測試與手動執行</h3>' +
-      '<p class="small muted">會推播到目前選擇的推播目標。</p>' +
-      '<div class="btn-row"><button class="btn small ghost" data-job="half">推播 ' + y + ' 上半年統計</button>' +
-      '<button class="btn small ghost" data-job="year">推播 ' + (y - 1) + ' 年度統計</button>' +
-      '<button class="btn small ghost" data-job="backup">立即備份 ' + (y - 1) + ' 年</button>' +
-      '<button class="btn small ghost" data-job="richmenu">重新建立管理員選單</button></div></div>' +
+      '<div class="card"><h3 style="margin-top:0">頁面權限</h3>' +
+      '<p class="small muted" style="margin:0 0 6px">勾選或取消就會立即儲存。管理員永遠可以看全部。</p>' +
+      '<table class="grid perm-table"><thead><tr><th>頁面</th><th>主管</th><th>職員</th></tr></thead><tbody>' +
+      PAGES.map(function (p) {
+        return '<tr><td>' + p[1] + (p[2] ? '<div class="small muted">' + p[2] + '</div>' : '') + '</td>' +
+          ['manager', 'staff'].map(function (r) {
+            return '<td><input type="checkbox" style="width:22px;height:22px;accent-color:var(--brand)" data-perm="' + r + '|' + p[0] + '"' + (D.perms[r][p[0]] ? ' checked' : '') + '></td>';
+          }).join('') + '</tr>';
+      }).join('') + '</tbody></table>' +
+      '<p class="small muted">「列入統計」在「員工 → 編輯」裡逐一設定：有勾的人可以報名，也會出現在報名名單與參加紀錄。</p></div>' +
 
       '<div class="card"><h3 style="margin-top:0">年度鎖定</h3>' +
-      '<div>目前已鎖定：' + (st.lockedYears.length ? st.lockedYears.map(function (x) { return '<span class="badge gray">🔒 ' + x + '</span>'; }).join(' ') : '<span class="muted">無</span>') + '</div>' +
-      '<div class="btn-row"><input class="input" id="ly" inputmode="numeric" maxlength="4" placeholder="年份，例如 ' + (y - 1) + '" style="flex:1;min-width:140px">' +
-      '<button class="btn ghost" id="lockBtn">鎖定</button><button class="btn danger" id="unlockBtn">解鎖</button></div>' +
+      '<p class="small muted" style="margin:0 0 8px">點年份就會切換鎖定／解鎖。鎖定後該年的報名與修正都不能再改。</p>' +
+      BM.yearChips('', { noNext: true, label: function (yy) { return (st.lockedYears.indexOf(yy) >= 0 ? '🔒 ' : '🔓 ') + yy; } })
+        .replace('class="year-chips"', 'class="year-chips" id="lockChips"') +
       '<p class="small muted">每年 1/11 13:00 會自動鎖定去年（若還有待審核申請，會每小時提醒並延後鎖定）。</p></div>' +
+
+      '<div class="card"><h3 style="margin-top:0">年度紀錄備份</h3>' +
+      '<div class="small">' + (st.backupSpreadsheetId ? '✅ 已設定　<a href="https://docs.google.com/spreadsheets/d/' + esc(st.backupSpreadsheetId) + '" target="_blank" rel="noopener">開啟備份試算表</a>' : '❌ 尚未設定（第一次備份時會自動建立）') + '</div>' +
+      '<label class="f">立即備份（點年份）</label>' +
+      BM.yearChips('', { noNext: true }).replace('class="year-chips"', 'class="year-chips" id="bkChips"') +
+      '<details style="margin-top:8px"><summary class="small muted" style="cursor:pointer">變更備份試算表</summary>' +
+      '<input class="input" id="bk" style="margin-top:6px" value="' + esc(st.backupSpreadsheetId ? 'https://docs.google.com/spreadsheets/d/' + st.backupSpreadsheetId : '') + '" placeholder="貼上試算表網址">' +
+      '<div class="btn-row"><button class="btn small ghost" id="saveBk">儲存</button></div></details></div>' +
+
+      '<div class="card"><h3 style="margin-top:0">年底提醒</h3>' +
+      '<p class="small muted" style="margin:0">每年 12/31 前最後一個工作天 10:00 自動推播；前一天會先私訊預覽給你，可以在 LINE 上取消。</p>' +
+      '<div class="btn-row"><button class="btn small ghost" id="yePreview">預覽／手動推播</button></div></div>' +
+
+      '<div class="card"><h3 style="margin-top:0">問題回報 ' + (fbOpen ? '<span class="badge warn">未處理 ' + fbOpen + '</span> ' : '') + (fbSched ? '<span class="badge gray">排程 ' + fbSched + '</span>' : '') + '</h3>' +
+      '<div class="choice" id="fbFilter">' + [['open', '未處理'], ['scheduled', '排程處理'], ['done', '已處理'], ['all', '全部']].map(function (o) {
+        return '<button class="btn small ' + (FB_FILTER === o[0] ? '' : 'ghost') + '" data-fbf="' + o[0] + '">' + o[1] + '</button>';
+      }).join('') + '</div><div id="fbList" style="margin-top:10px"></div>' +
+      '<p class="small muted">「排程處理」會在每月 1 日整理成清單私訊給你，再由 Claude 和你討論修改方式。</p></div>' +
 
       '<div class="card"><h3 style="margin-top:0">我的密碼</h3>' +
       '<p class="small muted" style="margin:0 0 8px">管理員帳號的新密碼 10–20 碼，需同時包含英文與數字。</p>' +
       '<div class="row2"><input class="input" id="op" type="password" placeholder="目前的密碼" autocomplete="current-password"><input class="input" id="np" type="password" placeholder="新密碼" autocomplete="new-password"></div>' +
       '<div class="btn-row"><button class="btn ghost" id="pwBtn">修改密碼</button></div></div>' +
 
-      '<div class="card small"><a href="' + esc(st.dataSheetUrl) + '" target="_blank" rel="noopener">開啟資料試算表</a>　' +
-      '<a href="' + esc(st.staffSheetUrl) + '" target="_blank" rel="noopener">開啟人員主檔</a></div>';
+      '<details class="card"><summary style="cursor:pointer;font-weight:600">進階</summary>' +
+      '<p class="small muted">LINE 選單平常會自動更新；只有選單不見或沒更新時才需要按。</p>' +
+      '<div class="btn-row"><button class="btn small ghost" id="rmBtn">重新建立 LINE 選單</button></div>' +
+      '<p class="small" style="margin-top:12px"><a href="' + esc(st.dataSheetUrl) + '" target="_blank" rel="noopener">開啟資料試算表</a>　' +
+      '<a href="' + esc(st.staffSheetUrl) + '" target="_blank" rel="noopener">開啟人員主檔</a></p></details>';
 
-    $$('input[name=pt]', box).forEach(function (r) {
-      r.onchange = function () { $$('input[name=pt]', box).forEach(function (x) { x.parentElement.classList.toggle('on', x.checked); }); };
-    });
-    $('#saveSet').onclick = async function () {
-      var pt = $('input[name=pt]:checked', box).value;
-      if (pt === 'main' && st.pushTarget !== 'main' && !confirm('切換到「正式群組」後，所有推播都會發到正式群組。確定？')) return;
-      await reload(await call('saveSettings', { settings: { pushTarget: pt, testGroupId: $('#tg').value, mainGroupId: $('#mg').value, backupSpreadsheetId: $('#bk').value } }));
-      BM.toast('已儲存設定');
-    };
-    $$('[data-job]', box).forEach(function (b) {
+    // 推播目標
+    $$('[data-pt]', box).forEach(function (b) {
       b.onclick = async function () {
-        if (b.dataset.job !== 'richmenu' && b.dataset.job !== 'backup' && !confirm('確定要推播到「' + (st.pushTarget === 'main' ? '正式群組' : '測試群組') + '」？')) return;
-        var r = await call('runJobNow', { job: b.dataset.job });
-        BM.toast(b.dataset.job === 'backup' ? '已備份到「' + r.sheet + '」分頁' : '完成');
+        var pt = b.dataset.pt;
+        if (pt === target) return;
+        if (pt === 'main' && !confirm('切換到「正式群組」後，所有推播都會發到正式群組。確定？')) return;
+        await reload(await call('saveSettings', { settings: { pushTarget: pt } }));
+        BM.toast('推播目標：' + (pt === 'main' ? '正式群組' : '測試群組'));
       };
     });
-    var lockFn = function (locked) {
-      return async function () {
-        var yy = $('#ly').value.trim();
-        if (!/^\d{4}$/.test(yy)) return BM.toast('請輸入 4 位數年份', true);
-        if (!locked && !confirm('解鎖 ' + yy + ' 年後，該年資料可以再被修改。改完記得重新鎖定。確定？')) return;
-        await reload(await call('setYearLock', { year: yy, locked: locked }));
-        BM.toast(locked ? '已鎖定' : '已解鎖');
+    $('#saveGroups').onclick = async function () {
+      await reload(await call('saveSettings', { settings: { testGroupId: $('#tg').value, mainGroupId: $('#mg').value } }));
+      BM.toast('已儲存群組 ID');
+    };
+    // 頁面權限：勾了就存
+    $$('[data-perm]', box).forEach(function (c) {
+      c.onchange = async function () {
+        var perms = JSON.parse(JSON.stringify(D.perms));
+        var k = c.dataset.perm.split('|');
+        perms[k[0]][k[1]] = c.checked;
+        try { await reload(await call('savePerms', { perms: perms })); BM.toast('已儲存權限'); }
+        catch (e) { c.checked = !c.checked; }
+      };
+    });
+    // 年度鎖定：點年份切換
+    $$('#lockChips [data-year]', box).forEach(function (b) {
+      b.onclick = async function () {
+        var yy = b.dataset.year;
+        var locked = st.lockedYears.indexOf(yy) >= 0;
+        if (!confirm(locked ? '解鎖 ' + yy + ' 年後，該年資料可以再被修改。改完記得重新鎖定。確定解鎖？' : '鎖定 ' + yy + ' 年？鎖定後該年的報名與修正都不能再改。')) return;
+        await reload(await call('setYearLock', { year: yy, locked: !locked }));
+        BM.toast(locked ? '已解鎖 ' + yy : '已鎖定 ' + yy);
+      };
+    });
+    // 立即備份
+    $$('#bkChips [data-year]', box).forEach(function (b) {
+      b.onclick = async function () {
+        if (!confirm('把 ' + b.dataset.year + ' 年的紀錄備份到年度紀錄試算表？（已有同年份分頁會覆蓋）')) return;
+        var r = await call('runJobNow', { job: 'backup', year: b.dataset.year });
+        BM.toast('已備份到「' + r.sheet + '」分頁');
+      };
+    });
+    $('#saveBk').onclick = async function () {
+      await reload(await call('saveSettings', { settings: { backupSpreadsheetId: $('#bk').value } }));
+      BM.toast('已儲存');
+    };
+    // 年底提醒
+    $('#yePreview').onclick = async function () {
+      var p = await call('previewYearEnd');
+      var tname = p.target === 'main' ? '正式群組' : '測試群組';
+      var m = BM.modal('<h2>年底提醒</h2>' +
+        '<p class="small muted" style="margin:0">' + p.year + ' 年的自動推播日：<b>' + esc(p.date.replace(/-/g, '/')) + '</b> 10:00' + (p.cancelled ? '（這次已取消）' : '') + '</p>' +
+        '<label class="f">推播內容</label><div class="preview">' + esc(p.text) + '</div>' +
+        '<div class="notice' + (p.target === 'main' ? '' : ' ok') + '">將推播到：<b>' + tname + '</b></div>' +
+        '<div class="btn-row"><button class="btn block" id="yeSend">現在手動推播</button></div>');
+      $('#yeSend', m.el).onclick = async function () {
+        if (!confirm('確定現在推播到「' + tname + '」？')) return;
+        var r = await call('runJobNow', { job: 'yearend' });
+        BM.toast('已推播到' + r.sentTo);
+        m.close();
       };
     };
-    $('#lockBtn').onclick = lockFn(true);
-    $('#unlockBtn').onclick = lockFn(false);
+    // 問題回報
+    function drawFb() {
+      var list = D.feedback.filter(function (f) {
+        return FB_FILTER === 'all' ? true : FB_FILTER === 'open' ? f.status === 'new' : f.status === FB_FILTER;
+      });
+      var badge = function (s) { return s === 'done' ? '<span class="badge">已處理</span>' : s === 'scheduled' ? '<span class="badge gray">排程處理</span>' : '<span class="badge warn">未處理</span>'; };
+      $('#fbList').innerHTML = list.length ? list.map(function (f) {
+        return '<div class="card fb-item" style="margin-bottom:8px"><div class="list-item"><div class="grow">' +
+          '<div class="small muted">' + esc(f.time.replace('T', ' ').slice(0, 16)) + '・' + esc(f.who) + '・' + esc(f.page) + '</div>' +
+          esc(f.message) + '</div>' + badge(f.status) + '</div>' +
+          '<div class="btn-row">' +
+          (f.status !== 'done' ? '<button class="btn small" data-fb="' + f.id + '" data-s="done">✅ 已處理</button>' : '') +
+          (f.status !== 'scheduled' ? '<button class="btn small ghost" data-fb="' + f.id + '" data-s="scheduled">🗓 排程處理</button>' : '') +
+          (f.status !== 'new' ? '<button class="btn small ghost" data-fb="' + f.id + '" data-s="new">改回未處理</button>' : '') +
+          '</div></div>';
+      }).join('') : '<div class="small muted">沒有資料</div>';
+      $$('[data-fb]', box).forEach(function (b) {
+        b.onclick = async function () { await reload(await call('setFeedbackStatus', { id: b.dataset.fb, status: b.dataset.s })); BM.toast('已更新'); };
+      });
+    }
+    $$('[data-fbf]', box).forEach(function (b) {
+      b.onclick = function () {
+        FB_FILTER = b.dataset.fbf;
+        $$('[data-fbf]', box).forEach(function (x) { x.classList.toggle('ghost', x !== b); });
+        drawFb();
+      };
+    });
+    drawFb();
+    $('#rmBtn').onclick = async function () {
+      await call('runJobNow', { job: 'richmenu' });
+      BM.toast('已重新建立，請關閉 LINE 聊天室再打開');
+      reload();
+    };
     $('#pwBtn').onclick = async function () {
       var n = $('#np').value;
       if (n.length < 10 || n.length > 20 || !/[A-Za-z]/.test(n) || !/\d/.test(n)) return BM.toast('新密碼需 10–20 碼，需同時有英文與數字', true);
@@ -577,10 +692,12 @@
     };
   }
 
+
   // ======================= 啟動 =======================
   $$('#tabs button').forEach(function (b) { b.onclick = function () { switchTab(b.dataset.tab); }; });
   $('#logoutBtn').onclick = function () { if (confirm('確定要登出？')) logout(); };
   $('#siteBtn').onclick = function () { location.href = 'index.html'; };
+  $('#testBtn').onclick = function () { location.href = 'test.html'; };
   BM.footer('管理頁', function () { return '管理員'; });
   if (token()) start(); else location.href = 'index.html';
 })();
