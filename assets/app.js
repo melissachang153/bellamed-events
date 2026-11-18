@@ -223,7 +223,7 @@
     if (S.me.admin) {
       sess = '<div class="notice ok">管理員檢視模式：可以查看員工看到的畫面，但不能報名。要修改報名請到管理頁的「報名名單」。</div>';
     } else if (!S.me.counted) {
-      sess = '<div class="notice ok">你的帳號只需查看，不需要報名。</div>';
+      sess = ''; // 不列入統計（例如主管）：只顯示活動內容與報名名單，不放報名區也不放說明
     } else if (!cancelled) {
       sess = '<h3 style="margin:18px 0 4px">我要報名</h3><p class="muted small" style="margin:0">上午、下午各算 0.5 次，可以只報其中一場。</p><div class="sess-grid">' +
         e.dates.map(function (d) {
